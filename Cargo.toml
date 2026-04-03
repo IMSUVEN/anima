@@ -1,0 +1,28 @@
+[package]
+name = "harn"
+version = "0.1.0"
+edition = "2021"
+description = "A CLI tool that bootstraps and maintains harness structures for AI-agent-driven development"
+license = "MIT"
+repository = "https://github.com/imsuven/harn"
+readme = "README.md"
+keywords = ["cli", "ai", "agent", "harness", "scaffolding"]
+categories = ["command-line-utilities", "development-tools"]
+
+[dependencies]
+anyhow = "1"
+chrono = { version = "0.4", default-features = false, features = ["clock"] }
+clap = { version = "4", features = ["derive"] }
+console = "0.15"
+dialoguer = "0.11"
+include_dir = "0.7"
+minijinja = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+sha2 = "0.10"
+toml = "0.8"
+walkdir = "2"
+git2 = "0.20"
+
+[dev-dependencies]
+tempfile = "3"
