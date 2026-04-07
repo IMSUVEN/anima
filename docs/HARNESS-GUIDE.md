@@ -12,68 +12,143 @@ Read the spec first. Come here when you need to understand the reasoning behind 
 
 A coding agent without a harness is like a power tool without a workbench. The tool is capable, but without a stable surface, clamps, guards, and a clear workspace, its power works against you.
 
-The naive approach — "give the agent a task and let it go" — works for small, well-defined problems. It breaks down in three predictable ways:
+The naive approach — "give the agent a task and let it go" — works for small, well-defined problems. It breaks down because of three contradictions inherent to human-agent systems. These are not bugs in a specific model or failure modes to be outgrown — they are permanent tensions that must be continuously managed. A harness that treats them as problems to solve will be perpetually surprised when they persist. A harness that treats them as contradictions to manage will be designed for durability.
 
-**Drift.** Over long sessions, the agent loses coherence. It forgets earlier decisions, starts wrapping up prematurely ("context anxiety"), or produces work that contradicts what it built an hour ago. The output looks busy but doesn't add up.
+**The intent-transfer contradiction.** Human intent is inherently ambiguous and contextual; agent execution is inherently literal and context-bound. The gap between what the human means and what the agent was told cannot be closed by better prompting alone — it is structural. This manifests as **drift**: the agent loses coherence over long sessions, forgets earlier decisions, wraps up prematurely ("context anxiety"), or produces work that contradicts itself. The output looks busy but doesn't add up.
 
-**Self-delusion.** When asked to evaluate its own work, the agent says it's great. This isn't a bug in a specific model — it's a structural property of self-evaluation. The same session that made a trade-off will rationalize that trade-off when asked to review it, for the same reason humans are poor judges of their own writing.
+**The self-evaluation contradiction.** The same system that produces work cannot objectively evaluate that work. This isn't a bug in a specific model — it's a structural property of self-evaluation. The same session that made a trade-off will rationalize that trade-off when asked to review it, for the same reason humans are poor judges of their own writing. This manifests as **self-delusion**: confident wrongness that compounds because the feedback signal is dishonest at its source.
 
-**Entropy.** Agent-generated code replicates existing patterns, including bad ones. A minor shortcut in one file becomes a codebase-wide convention within days. Without active correction, quality degrades monotonically. This is not a model limitation — it's a property of any system that copies existing patterns without understanding intent.
+**The entropy contradiction.** Pattern replication is simultaneously the agent's greatest strength and its greatest vulnerability. Agents produce code by imitating existing patterns — fast and consistent when patterns are good, a vector for decay when they're bad. A minor shortcut in one file becomes a codebase-wide convention within days. Without active correction, quality degrades monotonically. The contradiction is not that the agent copies badly — it's that the very mechanism that makes agents productive is also the mechanism that degrades the codebase.
 
-Harness engineering addresses all three. The harness provides structure that prevents drift (execution plans, context resets), separation that prevents self-delusion (independent evaluator), and mechanical enforcement that prevents entropy (linters, tests, automated cleanup). None of these require the model to be smarter. They require the environment to be better designed.
+| Contradiction | Tension | Corresponding Axiom |
+|--------------|---------|---------------------|
+| **Intent transfer** | Ambiguity of human intent vs. literalness of agent execution | Axiom 1 (Governance) |
+| **Self-evaluation** | Generation and judgment fused in one system | Axiom 1 + Axiom 3 |
+| **Entropy** | Pattern replication as productive force vs. decay vector | Axiom 3 (Loop) |
+
+These contradictions cannot be resolved — only managed. The harness is the management apparatus. It provides structure that holds the intent-transfer contradiction in check (execution plans, context resets), separation that holds the self-evaluation contradiction in check (independent evaluator), and mechanical enforcement that holds the entropy contradiction in check (linters, tests, automated cleanup). None of these require the model to be smarter. They require the environment to be designed around the reality that these tensions are permanent.
+
+This framing has a practical consequence: it tells you which harness components are permanent and which are temporary. Components that manage a fundamental contradiction — linters against entropy, separate evaluators against self-delusion, structured plans against drift — are engineering fundamentals. They stay. Components that compensate for a current model weakness — sprint decomposition because context windows are too short, context resets because compaction doesn't work well enough — are scaffolding. They go when the model improves. This is exactly the distinction the spec draws in §4.3.
+
+These contradictions are what make the three axioms necessary. The next section unpacks those axioms and shows how every harness design decision traces back to them.
 
 ---
 
-## 2. The Three Mental Models
+## 2. The Three Axioms
 
-Before building a harness, internalize three ideas. They'll guide every decision.
+The spec opens with three axioms, each derived from the structural contradictions identified in §1. They are not arbitrary starting points — they are answers to three questions that any agent engineering system must confront.
 
-### 2.1 The Loop
+| Question | Axiom | Domain |
+|----------|-------|--------|
+| **Who decides?** | Humans steer, agents execute | Governance |
+| **How do you grow?** | Start simple; earn complexity | Strategy |
+| **How does work happen?** | Everything is a loop | Mechanism |
 
-> Spec reference: §0.3 Axiom 3
+These three are necessary: skip any one and you have a structural blind spot. Skip governance and you get autonomous agents making high-stakes decisions without oversight. Skip strategy and you get either premature complexity or permanent over-simplification. Skip mechanism and you get agents that act without feedback, drifting undetected.
 
-Every agentic workflow is a loop: the agent acts, the environment responds, and the agent adjusts. This is true at every scale — a single test-fix cycle, a multi-sprint build, an overnight fleet run.
+They are also sufficient: once you've answered who decides, how you grow, and how work happens, every specific harness rule in the spec follows as a derivation. The MUSTs, SHOULDs, and MAYs are not a list of independent best practices — they are consequences of these three principles.
 
-The quality of the loop determines the quality of the output. A good loop has:
+This isn't a framework we invented and then went looking for evidence. Between late 2024 and early 2026, several independent teams — OpenAI, Anthropic, Geoffrey Huntley, Steve Krenzel at Logic.inc, Steve Yegge — arrived at remarkably similar conclusions without coordinating. They converged because they were forced to answer the same three structural questions, and the problem domain admits only a narrow band of workable answers. Section 7 traces the full history.
 
-- **Fast feedback.** The agent learns quickly whether its last action worked. A 1-minute test suite lets the agent check its work after every change. A 20-minute suite means it batches changes and hopes for the best — errors compound unchecked.
-- **Honest feedback.** The signal must reflect reality. A linter that ignores violations, a test suite with holes, or a coverage report that excludes files — these create false confidence. The agent thinks it's done when it's not.
-- **Structural correction.** When the same failure recurs, you don't just fix it — you change the environment so it can't happen again. Add a linter rule. Add a test. Change a tool's interface. Each fix makes the loop smarter, permanently.
+### 2.1 Axiom 1: Humans Steer, Agents Execute
+
+**The question:** Who holds authority in an agent engineering system?
+
+The answer seems obvious until you watch it break down. The failure mode isn't a dramatic robot takeover — it's a gradual erosion of human intent. The agent makes a reasonable-seeming judgment call. Then another. Then another. By the time a human reviews the output, the accumulated decisions have drifted far from the original intent, and unwinding them is more expensive than starting over.
+
+The axiom draws a bright line: humans define intent, boundaries, and quality criteria. Agents realize that intent within those boundaries. The harness is the mechanism that enforces this separation — not by limiting what the agent can do, but by structuring how human intent flows into the agent's environment.
+
+This means investing human attention at the leverage points: designing the AGENTS.md that orients the agent (Spec §1.1), defining the safety boundaries that constrain it (Spec §1.7), building the escalation protocol that pulls it back when it's stuck or about to do damage (Spec §2.6), and calibrating the evaluator that grades its output (Spec §2.5). These aren't overhead — they're the steering mechanism.
+
+**What violation looks like:**
+
+- **Confident wrongness.** The agent says the feature works; it doesn't. Root cause: no structurally independent evaluation — the agent evaluated its own work and, predictably, approved it. Fix: separate evaluator that exercises the live artifact (Spec §2.1).
+- **Scope explosion.** The agent adds features nobody asked for. Root cause: human intent was vague — the prompt or plan didn't define boundaries. Fix: ExecPlan with bounded milestones and explicit acceptance criteria (Spec §2.2).
+- **Decision paralysis.** The agent asks for help on something it could decide. Root cause: the steering is contradictory or over-constrained — conflicting instructions in AGENTS.md, or rules that leave no room for legitimate agent judgment. Fix: simplify the instructions; resolve contradictions.
+
+### 2.2 Axiom 2: Start Simple; Earn Complexity
+
+**The question:** How should the harness evolve over time?
+
+The temptation is to build the full harness upfront — planner, generator, evaluator, merge queue, fleet supervisor. But every harness component encodes an assumption about what the model cannot do. If the assumption is wrong — if the model can handle the task without the component — then the component is pure overhead: latency, cost, coordination bugs, and orchestration surface area that obscures rather than helps.
+
+The axiom demands that you start with the simplest viable harness (a single agent in a loop) and add complexity only when the current level demonstrably fails. "Demonstrably" is the key word. Not "might fail," not "feels like it could be better" — actually fails, in a way you can point to.
+
+This principle operates at two levels:
+
+**Level progression.** The spec's L1 → L2 → L3 structure (Spec §1, §2, §3) is a direct expression of this axiom. Each level has explicit upgrade triggers — you don't move to Level 2 until a single agent consistently runs out of context, or output quality requires evaluation the agent can't self-perform. You don't move to Level 3 until the work backlog consistently exceeds pipeline capacity.
+
+**Component lifecycle.** Within any level, the harness contains two types of components. **Scaffolding** compensates for things the model can't do *yet* — sprint decomposition, context resets, separate evaluators. These are temporary by nature. When a model improves enough to handle the task natively, the scaffolding becomes overhead and should be removed. **Fundamentals** are valuable regardless of model capability — linters, types, fast tests. Even a hypothetically perfect model would produce better results in an environment with strong fundamentals, because entropy is inherent in any copy-and-modify system, not a model limitation.
+
+The practical test: "Would a brilliant human engineer also benefit from this constraint?" If yes, it's a fundamental. If no, it's scaffolding. After each model generation, run a simplification sprint (§6.2): disable each scaffolding component, measure impact, keep only what's load-bearing.
+
+**What violation looks like:**
+
+- **Premature multi-agent.** Team jumps to a planner-generator-evaluator pipeline when a single agent in a loop would suffice. Nondeterminism compounds across agent boundaries; orchestration bugs consume more time than the agents save. Fix: single agent loop first; scale only when provably needed (Spec Appendix B).
+- **Static harness design.** Team builds the harness once and never revisits it. Scaffolding that was necessary two model generations ago is still running, adding latency and cost without improving output. Fix: simplification sprint after each model upgrade (Spec §4.3).
+- **Over-specified plans.** Planner produces granular implementation instructions. When it gets a detail wrong, the error cascades into the build because the generator follows instructions literally. Fix: high-level spec + negotiated sprint contracts (Spec §2.2, §2.3).
+
+### 2.3 Axiom 3: Everything Is a Loop
+
+**The question:** What is the fundamental mechanism by which agentic work produces good output?
+
+Not talent. Not scale. Not prompting cleverness. The answer is feedback. Every agentic workflow is a loop: the agent acts, the environment responds, and the agent adjusts. This is true at every scale — a single test-fix cycle, a multi-sprint build, an overnight fleet run. The quality of the loop determines the quality of the output.
+
+A good loop has three properties:
+
+- **Fast feedback.** The agent learns quickly whether its last action worked. A 1-minute test suite lets the agent check its work after every change. A 20-minute suite means it batches changes and hopes for the best — errors compound unchecked. This is why the spec requires tests in ≤1 minute (Spec §1.5) and dev environments in ≤2 seconds (Spec §1.6) — not as arbitrary thresholds, but as conditions for the loop to function.
+- **Honest feedback.** The signal must reflect reality. A linter that ignores violations, a test suite with holes, or a coverage report that excludes files — these create false confidence. The agent thinks it's done when it's not. This is why the spec pushes toward 100% coverage (Spec §1.5) and end-to-end types (Spec §1.2) — not as perfectionism, but as conditions for the signal to be trustworthy.
+- **Structural correction.** When the same failure recurs, you don't just fix it — you change the environment so it can't happen again. Add a linter rule. Add a test. Change a tool's interface. Each fix makes the loop smarter, permanently. This is the mechanism behind entropy management (Spec §4.1) — not periodic cleanup, but continuous structural improvement.
 
 Think of the loop as a learning system. Your job is not to fix each output. Your job is to improve the feedback mechanism so the agent fixes its own output.
 
-### 2.2 Scaffolding vs. Fundamentals
+**What violation looks like:**
 
-> Spec reference: §4.3 Harness Evolution
+- **Premature completion.** Agent declares "done" with half the work finished. Root cause: the loop lacks explicit completion criteria — the agent's "context anxiety" isn't corrected by structural signals. Fix: ExecPlan with observable milestones; context reset when coherence degrades (Spec §2.2, §2.4).
+- **Pattern replication.** New code copies a bad pattern from elsewhere in the codebase. Root cause: the loop has no structural correction for this class of error — no linter rule, no golden-principle enforcement. The agent imitates what it sees. Fix: promote the fix to a linter rule; run entropy-detection agents (Spec §1.4, §4.1).
+- **Silent tool failure.** Agent proceeds despite a tool error because the tool returned ambiguous output. Root cause: the feedback was dishonest — the tool didn't fail loudly enough. Fix: poka-yoke — redesign the tool to fail clearly and unambiguously (Spec §1.3).
+- **Test avoidance.** Agent writes code but skips or skims tests. Root cause: the loop either doesn't enforce coverage or the suite is too slow to run frequently. Fix: 100% coverage target with a fast suite (Spec §1.5).
 
-The harness contains two types of components, and confusing them leads to either over-engineering or under-engineering.
+### 2.4 Reading Failures Through the Axioms
 
-**Scaffolding** compensates for things the model can't do *yet*. Sprint decomposition exists because current models lose coherence on very long tasks. Context resets exist because compaction doesn't fully cure context anxiety. Separate evaluators exist because models can't reliably judge their own work.
+The sections above show characteristic failures for each axiom. In practice, most failures involve more than one. The table below maps every common failure pattern to the axiom(s) it violates — serving as both a diagnostic tool and a demonstration that the three axioms have complete coverage.
 
-These are temporary by nature. When a model improves enough to handle the task natively, the scaffolding becomes overhead. The right response is to remove it.
+| Failure Pattern | What You See | Axiom Violated | Root Cause | Harness Fix |
+|----------------|-------------|----------------|------------|-------------|
+| **Premature completion** | Agent declares "done" at 50% progress | 3 (Loop) | No completion criteria in feedback | Context reset; ExecPlan with observable milestones |
+| **Confident wrongness** | Agent says the feature works; it doesn't | 1 (Governance) | No independent evaluation | Separate evaluator; live-app testing |
+| **Pattern replication** | New code copies a bad pattern | 3 (Loop) | No structural correction | Linter rule; golden principle; targeted refactor |
+| **Silent tool failure** | Agent proceeds despite a tool error | 3 (Loop) | Dishonest feedback from tool | Poka-yoke: redesign tool to fail loudly |
+| **Scope explosion** | Agent adds features nobody asked for | 1 (Governance) + 2 (Strategy) | Vague intent; unbounded scope | Bounded milestones; sprint contract |
+| **Boundary corruption** | API sends wrong data shape; DB insert fails | 3 (Loop) | Feedback gap at system edge | Parse at boundary; end-to-end types |
+| **Test avoidance** | Agent writes code but skips tests | 3 (Loop) | No coverage enforcement; slow suite | 100% coverage target; fast suite |
+| **Decision paralysis** | Agent asks for help on trivial decisions | 1 (Governance) | Contradictory or over-constrained steering | Simplify AGENTS.md; resolve contradictions |
+| **Premature multi-agent** | Multi-agent pipeline where single agent suffices | 2 (Strategy) | Complexity not earned | Single agent loop first; scale when provably needed |
+| **Static harness** | Harness unchanged across model generations | 2 (Strategy) | Assumptions go stale | Simplification sprint after each model upgrade |
 
-**Fundamentals** are valuable regardless of model capability. Linters enforce invariants because entropy is inherent in any copy-and-modify system, human or AI. Types eliminate illegal states because ambiguity at boundaries creates silent failures for any coder. Fast tests make the loop tight because slow feedback degrades any iterative process.
+When something goes wrong, don't just fix the output. Identify which axiom was violated, find the structural gap in the harness, and close it. Each fix makes the loop smarter, the steering clearer, or the strategy more adaptive — permanently.
 
-These are permanent. Even a hypothetically perfect model would produce better results in an environment with strong fundamentals.
+### 2.5 When Axioms Conflict
 
-The practical test: "Would a brilliant human engineer also benefit from this constraint?" If yes, it's a fundamental. If no, it's scaffolding.
+The three axioms are complementary by design, but in specific decisions they can pull in opposing directions. When they do, **prefer the axiom whose violation produces the least reversible damage.**
 
-### 2.3 Agent Failure Taxonomy
+Axiom 1 (Governance) violations — the agent making high-stakes decisions without human oversight — produce damage that compounds silently and is expensive to unwind. By the time you notice, accumulated decisions have drifted far from intent.
 
-Agents fail in characteristic ways. Recognizing the pattern tells you which part of the harness to fix.
+Axiom 3 (Loop) violations — broken or dishonest feedback — produce damage that accumulates but is detectable once you look. A missing test or a silent tool failure causes real harm, but the harm becomes visible in outputs once you inspect them.
 
-| Failure Pattern | What You See | Root Cause | Harness Fix |
-|----------------|-------------|------------|-------------|
-| **Premature completion** | Agent declares "done" with half the work finished | Context anxiety; loss of coherence | Context reset; better ExecPlan with explicit completion criteria |
-| **Confident wrongness** | Agent says the feature works; it doesn't | Self-serving evaluation bias | Separate evaluator; live-app testing |
-| **Pattern replication** | New code copies a bad pattern from elsewhere | No enforcement; agent imitates what it sees | Linter rule; golden principle; targeted refactor |
-| **Silent tool failure** | Agent proceeds despite a tool error | Tool returned ambiguous output | Poka-yoke: redesign tool to fail loudly and clearly |
-| **Scope explosion** | Agent adds features nobody asked for | Prompt too vague; no acceptance criteria | ExecPlan with bounded milestones; sprint contract |
-| **Boundary corruption** | API sends wrong data shape; DB insert fails | Untyped system edge | Parse at boundary; end-to-end types |
-| **Test avoidance** | Agent writes code but skips or skims tests | No coverage enforcement; slow test suite | 100% coverage target; fast suite |
-| **Decision paralysis** | Agent asks for help on something it could decide | Over-constrained prompt; conflicting instructions | Simplify AGENTS.md; resolve contradictions |
+Axiom 2 (Strategy) violations — premature complexity — produce overhead that is visible from the start and removable without lasting damage. An unnecessary harness component adds cost and latency, but you can always take it out.
 
-When something goes wrong, don't just fix the output. Find the pattern, identify the root cause, and strengthen the loop.
+This gives a natural precedence when axioms conflict: **Governance > Loop > Strategy**, ordered by irreversibility of harm.
+
+**In practice:**
+
+- *Adding human review (Axiom 1) increases complexity (Axiom 2).* If the decision domain is high-stakes — security, data integrity, production deployment — Axiom 1 wins: add the review step. If the domain is low-stakes and the agent has a track record, Axiom 2 wins: skip the overhead.
+
+- *Adding a feedback mechanism (Axiom 3) increases complexity (Axiom 2).* If a feedback gap is causing recurring failures, Axiom 3 wins: the structural correction is worth the added structure. If the improvement is speculative, Axiom 2 wins: wait until the gap demonstrably causes harm.
+
+- *Simplifying the harness (Axiom 2) might reduce feedback quality (Axiom 3).* Measure. Disable the component, run a representative task, compare output. If quality holds, Axiom 2 wins — remove the component. If quality drops, Axiom 3 wins — keep it.
+
+The precedence is not a rigid hierarchy — it is a tiebreaker for genuine conflicts, applied with judgment about the specific stakes involved. Most of the time, the axioms align: a well-designed feedback loop (Axiom 3) is also the simplest intervention that works (Axiom 2), and it supports human oversight by making the agent's state legible (Axiom 1).
 
 ---
 
@@ -439,7 +514,7 @@ This section is context, not prescription. It explains the intellectual lineage 
 
 ### 7.1 The Convergent Discoveries
 
-Between late 2024 and early 2026, several teams independently arrived at remarkably similar conclusions about what makes agents effective. This wasn't coordination — they were solving the same problems and converging on the same physics.
+Between late 2024 and early 2026, several teams independently arrived at remarkably similar conclusions about what makes agents effective. This wasn't coordination — they were solving the same problems and converging on the same physics. As §2 argues, this convergence is explained by the structure of the problem domain itself: every team was forced to answer the same three questions (who decides, how to grow, how work happens), and the viable answer space is narrow.
 
 **OpenAI's team** built an internal product with zero manually-written code over five months. Their key discovery: the repository itself — not the prompt, not the model — is the primary lever for agent effectiveness. They made the codebase the single source of truth, pushed all context into versioned artifacts, and enforced architectural invariants mechanically. Their "AGENTS.md as table of contents" pattern, progressive disclosure, and doc-gardening practices all emerged from the insight that agent legibility is the bottleneck.
 
@@ -453,11 +528,14 @@ Between late 2024 and early 2026, several teams independently arrived at remarka
 
 ### 7.2 What Remains Unsettled
 
-Harness engineering is young. Several questions remain open:
+Harness engineering is young. Several questions remain open. For each, we note the thinking framework the three axioms provide — not as answers, but as constraints on the space of good answers.
 
-- **How does architectural coherence evolve over years?** Current experiments span months. Nobody yet knows what a 5-year-old, fully agent-generated codebase looks like.
-- **Where does human judgment add the most leverage?** The boundary between "agent can decide" and "human must decide" shifts with each model generation. The optimal division of labor is a moving target.
-- **How should harnesses adapt to multi-modal agents?** As agents gain the ability to see screenshots, hear audio, and reason over video, the evaluation surface expands. Current harnesses are primarily text-oriented.
-- **What's the right cost model?** At $10-12/hr per agent, Level 3 operations cost thousands per day. Is this justified by output quality? Under what conditions? The industry doesn't have robust benchmarks yet.
+- **How does architectural coherence evolve over years?** Current experiments span months. Nobody yet knows what a 5-year-old, fully agent-generated codebase looks like. *Framework: Axiom 3 says structural correction must be continuous, not periodic. The stance this implies: invest in continuous entropy measurement and frequent small corrections rather than periodic large refactors. If coherence is degrading, the feedback loop is too slow or too dishonest — fix the loop, not the symptoms.*
 
-These are research questions, not blockers. Build with what works today. Evolve as the answers emerge.
+- **Where does human judgment add the most leverage?** The boundary between "agent can decide" and "human must decide" shifts with each model generation. The optimal division of labor is a moving target. *Framework: Axiom 1 orders by irreversibility — human attention belongs at the decisions with the least reversible consequences. As agents earn trust through demonstrated loop performance (Axiom 3), the boundary should shift outward. The practical test: if an agent decision goes wrong, can the loop self-correct? If yes, delegate. If no, retain human governance.*
+
+- **How should harnesses adapt to multi-modal agents?** As agents gain the ability to see screenshots, hear audio, and reason over video, the evaluation surface expands. Current harnesses are primarily text-oriented. *Framework: the three axioms are modality-agnostic. When agents gain a new modality, apply the same principles: design the feedback loop for that modality (Axiom 3), maintain human governance over high-stakes decisions regardless of input channel (Axiom 1), and add multi-modal evaluation only when text-only evaluation demonstrably fails (Axiom 2).*
+
+- **What's the right cost model?** At $10-12/hr per agent, Level 3 operations cost thousands per day. Is this justified by output quality? Under what conditions? The industry doesn't have robust benchmarks yet. *Framework: Axiom 2 says start simple and earn complexity — this applies to spend as well. Scale agent investment the same way you scale the harness: measure output value at the current level, scale up only when that level plateaus, and ensure each increment of cost produces a measurable increment of value.*
+
+These are research questions, not blockers. The frameworks above won't provide answers, but they will keep you oriented while the answers emerge. Build with what works today; let the axioms guide your judgment where the evidence hasn't arrived yet.

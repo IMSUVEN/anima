@@ -2,6 +2,25 @@
 
 [English](HARNESS-SPEC.md) | [中文](HARNESS-SPEC.zh-CN.md)
 
+> Three structural contradictions are inherent to human-agent systems. They are permanent — not bugs to be fixed or limitations to be outgrown — and any harness must manage all three. (The companion [Harness Guide](HARNESS-GUIDE.md), §1–2, provides the full analysis.)
+>
+> - *The intent-transfer contradiction:* human intent is ambiguous and contextual; agent execution is literal and context-bound. The gap is structural.
+> - *The self-evaluation contradiction:* the same system that produces work cannot objectively evaluate that work. Self-serving bias is a property of self-evaluation itself.
+> - *The entropy contradiction:* pattern replication is simultaneously the agent's greatest strength and its greatest vulnerability.
+>
+> The following axioms are principles for managing these contradictions.
+>
+> **Axiom 1. Humans steer, agents execute.**
+> *Manages the intent-transfer and self-evaluation contradictions.* The scarce resource is human attention. Invest it in designing the environment, not writing code. This axiom governs the division of authority — humans define intent and boundaries; agents realize them within those boundaries.
+>
+> **Axiom 2. Start simple; earn complexity.**
+> *Governs how aggressively the management apparatus is deployed.* Every harness component encodes an assumption about what the model cannot do. If the model can do it alone, the component is waste. Stress-test assumptions with each model generation. This axiom governs growth strategy — begin with one agent in a loop; add structure only when the current level demonstrably fails.
+>
+> **Axiom 3. Everything is a loop.**
+> *Manages the entropy and self-evaluation contradictions.* Agent acts, environment responds, agent adjusts. Design the loop well and the agent converges; design it poorly and the agent drifts. When a failure recurs, resolve it structurally — add a rule, a test, a tool — so the loop self-corrects. This axiom governs the fundamental mechanism of all agentic work.
+
+---
+
 ## 0. Preamble
 
 ### 0.1 What This Document Is
@@ -20,15 +39,12 @@ This document uses RFC 2119 keywords:
 - **SHOULD**: Strongly recommended. Deviate only with explicit justification.
 - **MAY**: Optional. Use when it adds value for your situation.
 
-### 0.3 Axioms
+This specification contains two kinds of obligations:
 
-1. **Humans steer, agents execute.** The scarce resource is human attention. Invest it in designing the environment, not writing code.
+- **Structural obligations** derive from the permanent contradictions of human-agent systems. They hold regardless of model capability and are not expected to change. Examples: "store knowledge in the repository" (§1.1), "validate input at system edges" (§1.2), "sandbox execution environments" (§1.7).
+- **Calibrated obligations** encode current engineering judgment about specific thresholds. The underlying principle is durable, but the specific value reflects the state of the art and should be stress-tested with each model generation. Where a specific number appears (≤ 1 minute, ≤ 2 seconds, ~100 lines), the obligation is calibrated: challenge the threshold, not the principle.
 
-2. **Start simple; earn complexity.** Every harness component encodes an assumption about what the model cannot do. If the model can do it alone, the component is waste. Stress-test assumptions with each model generation.
-
-3. **Everything is a loop.** Agent acts → environment responds → agent adjusts. Design the loop well and the agent converges; design it poorly and the agent drifts. When a failure recurs, resolve it structurally — add a rule, a test, a tool — so the loop self-corrects.
-
-### 0.4 Workflow Pattern Menu
+### 0.3 Workflow Pattern Menu
 
 Before adding agents, choose the simplest pattern that fits the task:
 
