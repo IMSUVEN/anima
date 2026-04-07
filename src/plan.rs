@@ -53,8 +53,8 @@ pub fn list_plans(project_root: &Path) -> Result<()> {
     let active_dir = project_root.join(ACTIVE_DIR);
     let completed_dir = project_root.join(COMPLETED_DIR);
 
-    let active_plans = list_plan_files(&active_dir);
-    let completed_plans = list_plan_files(&completed_dir);
+    let active_plans = list_plan_files(&active_dir)?;
+    let completed_plans = list_plan_files(&completed_dir)?;
 
     println!();
     if active_plans.is_empty() && completed_plans.is_empty() {
@@ -63,16 +63,33 @@ pub fn list_plans(project_root: &Path) -> Result<()> {
         return Ok(());
     }
 
+    // Load active sprint to show linkage
+    let sprint_state = load_active_sprint(project_root);
+
     if !active_plans.is_empty() {
         println!("Active plans:");
         for (i, plan) in active_plans.iter().enumerate() {
+            let bare_name = plan.trim_end_matches(".md");
             let milestones = count_milestones(project_root, ACTIVE_DIR, plan);
+            let slug = extract_slug_from_filename(plan);
+            let date = extract_date_from_filename(plan);
             println!(
-                "  {}. {} ({})",
+                "  {}. {} (created {}, {})",
                 i + 1,
-                plan.trim_end_matches(".md"),
+                bare_name,
+                date,
                 milestones
             );
+
+            // Show linked sprint under this plan
+            if let Some((ref sprint_name, ref sprint_slug, ref sprint_plan, ref sprint_progress)) =
+                sprint_state
+            {
+                if sprint_plan == slug || bare_name.ends_with(&format!("-{sprint_plan}")) {
+                    println!("     └─ sprint: {} {}", sprint_slug, sprint_progress);
+                    let _ = sprint_name; // used only for display matching
+                }
+            }
         }
     }
 
@@ -91,6 +108,46 @@ pub fn list_plans(project_root: &Path) -> Result<()> {
     Ok(())
 }
 
+/// Load active sprint state for display purposes. Returns (name, slug, plan, progress_str).
+fn load_active_sprint(project_root: &Path) -> Option<(String, String, String, String)> {
+    let path = project_root.join(".agents/harn/current-sprint.toml");
+    let content = std::fs::read_to_string(&path).ok()?;
+    let state: crate::types::SprintState = toml::from_str(&content).ok()?;
+    let plan = state.plan.clone().unwrap_or_default();
+    let contract = state.contract_path.resolve(project_root);
+    let progress = if let Ok(c) = std::fs::read_to_string(contract) {
+        let checked = c
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                t.starts_with("- [x]") || t.starts_with("- [X]")
+            })
+            .count();
+        let unchecked = c
+            .lines()
+            .filter(|l| l.trim_start().starts_with("- [ ]"))
+            .count();
+        let total = checked + unchecked;
+        if total > 0 {
+            format!("({checked}/{total} acceptance criteria)")
+        } else {
+            String::new()
+        }
+    } else {
+        String::new()
+    };
+    Some((state.name, state.slug.to_string(), plan, progress))
+}
+
+fn extract_date_from_filename(filename: &str) -> &str {
+    let without_ext = filename.trim_end_matches(".md");
+    if without_ext.len() >= 10 {
+        &without_ext[..10]
+    } else {
+        "unknown"
+    }
+}
+
 pub fn complete_plan(project_root: &Path, name: &str) -> Result<()> {
     let active_dir = project_root.join(ACTIVE_DIR);
     let completed_dir = project_root.join(COMPLETED_DIR);
@@ -100,12 +157,11 @@ pub fn complete_plan(project_root: &Path, name: &str) -> Result<()> {
     let source = active_dir.join(&plan_file);
     let dest = completed_dir.join(&plan_file);
 
-    // Check for active linked sprint (parse TOML properly)
     let sprint_state_path = project_root.join(".agents/harn/current-sprint.toml");
     if sprint_state_path.exists() {
         if let Ok(sprint_content) = fs::read_to_string(&sprint_state_path) {
-            if let Ok(sprint_state) = toml::from_str::<toml::Value>(&sprint_content) {
-                if let Some(plan_field) = sprint_state.get("plan").and_then(|v| v.as_str()) {
+            if let Ok(state) = toml::from_str::<crate::types::SprintState>(&sprint_content) {
+                if let Some(ref plan_field) = state.plan {
                     let plan_slug = extract_slug_from_filename(&plan_file);
                     if plan_field == plan_slug || plan_field == name {
                         bail!(
@@ -162,25 +218,29 @@ fn ensure_dir(dir: &Path) -> Result<()> {
     Ok(())
 }
 
-fn list_plan_files(dir: &Path) -> Vec<String> {
+fn list_plan_files(dir: &Path) -> Result<Vec<String>> {
+    if !dir.exists() {
+        return Ok(Vec::new());
+    }
     let mut files = Vec::new();
-    if let Ok(entries) = fs::read_dir(dir) {
-        for entry in entries.flatten() {
-            let name = entry.file_name().to_string_lossy().to_string();
-            if name.ends_with(".md")
-                && !name.starts_with("sprint-")
-                && !name.starts_with("handoff-")
-            {
-                files.push(name);
-            }
+    let entries = fs::read_dir(dir).with_context(|| {
+        format!(
+            "Could not read directory: {}. Check filesystem permissions.",
+            dir.display()
+        )
+    })?;
+    for entry in entries.flatten() {
+        let name = entry.file_name().to_string_lossy().to_string();
+        if name.ends_with(".md") && !name.starts_with("sprint-") && !name.starts_with("handoff-") {
+            files.push(name);
         }
     }
     files.sort();
-    files
+    Ok(files)
 }
 
 fn find_plan_file(dir: &Path, name: &str) -> Result<String> {
-    let plans = list_plan_files(dir);
+    let plans = list_plan_files(dir)?;
 
     // Exact filename match
     if plans.contains(&format!("{name}.md")) {
@@ -216,7 +276,7 @@ fn extract_slug_from_filename(filename: &str) -> &str {
     }
 }
 
-fn count_milestones(project_root: &Path, dir: &str, filename: &str) -> String {
+pub fn count_milestones(project_root: &Path, dir: &str, filename: &str) -> String {
     let path = project_root.join(dir).join(filename);
     if let Ok(content) = fs::read_to_string(path) {
         let milestone_count = content

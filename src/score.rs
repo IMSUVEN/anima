@@ -23,23 +23,55 @@ pub fn show(project_root: &Path) -> Result<()> {
     println!("{}", style("Quality Scores").bold());
     println!();
 
-    let mut in_table = false;
     for line in content.lines() {
-        if line.starts_with("| Domain") {
-            in_table = true;
-        }
-        if in_table {
-            println!("{line}");
-            if line.trim().is_empty() {
-                in_table = false;
-            }
-        }
         if line.starts_with("Last updated:") {
             println!("{line}");
         }
     }
 
+    let lines: Vec<&str> = content.lines().collect();
+    let mut i = 0;
+    let mut first_table = true;
+    while i < lines.len() {
+        if markdown_table_starts_at(&lines, i) {
+            if !first_table {
+                println!();
+            }
+            first_table = false;
+            println!("{}", lines[i]);
+            println!("{}", lines[i + 1]);
+            i += 2;
+            while i < lines.len() {
+                let line = lines[i];
+                if !line.trim_start().starts_with('|') {
+                    break;
+                }
+                if i + 1 < lines.len() && is_markdown_table_separator_row(lines[i + 1]) {
+                    break;
+                }
+                println!("{line}");
+                i += 1;
+            }
+            continue;
+        }
+        i += 1;
+    }
+
     Ok(())
+}
+
+fn markdown_table_starts_at(lines: &[&str], i: usize) -> bool {
+    if i + 1 >= lines.len() {
+        return false;
+    }
+    let header = lines[i];
+    let sep = lines[i + 1];
+    header.trim_start().starts_with('|') && is_markdown_table_separator_row(sep)
+}
+
+fn is_markdown_table_separator_row(line: &str) -> bool {
+    let t = line.trim();
+    t.starts_with('|') && t.contains("---")
 }
 
 pub fn update(project_root: &Path) -> Result<()> {
@@ -91,11 +123,24 @@ pub fn update(project_root: &Path) -> Result<()> {
         println!();
     }
 
-    let content = render_score_file(&rows, &date);
+    let existing_history = read_existing_history(project_root);
+    let content = render_score_file(&rows, &date, &existing_history);
     let path = project_root.join(SCORE_PATH);
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent)
+            .with_context(|| format!("Could not create directory for {SCORE_PATH}."))?;
     }
+
+    if path.exists() {
+        let bak = project_root.join(format!("{SCORE_PATH}.bak"));
+        fs::copy(&path, &bak).with_context(|| {
+            format!(
+                "Could not back up {SCORE_PATH} to {SCORE_PATH}.bak. Check filesystem permissions."
+            )
+        })?;
+        println!("Previous scores backed up to {SCORE_PATH}.bak");
+    }
+
     fs::write(&path, &content)
         .with_context(|| format!("Could not write {SCORE_PATH}. Check filesystem permissions."))?;
 
@@ -120,9 +165,14 @@ struct ScoreRow {
 
 fn read_domains(project_root: &Path) -> Vec<String> {
     let arch_path = project_root.join("ARCHITECTURE.md");
-    let content = match fs::read_to_string(arch_path) {
+    let content = match fs::read_to_string(&arch_path) {
         Ok(c) => c,
-        Err(_) => return Vec::new(),
+        Err(e) => {
+            if arch_path.exists() {
+                eprintln!("Warning: Could not read ARCHITECTURE.md for domain extraction: {e}");
+            }
+            return Vec::new();
+        }
     };
 
     let mut domains = Vec::new();
@@ -199,12 +249,48 @@ fn compute_overall(func: &str, depth: &str, quality: &str, design: &str) -> Stri
     }
 }
 
-fn render_score_file(rows: &[ScoreRow], date: &HarnDate) -> String {
+fn read_existing_history(project_root: &Path) -> Vec<String> {
+    let path = project_root.join(SCORE_PATH);
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            if path.exists() {
+                eprintln!("Warning: Could not read {SCORE_PATH} for history: {e}");
+            }
+            return Vec::new();
+        }
+    };
+
+    let mut rows = Vec::new();
+    let mut in_history = false;
+    let mut past_header = false;
+    for line in content.lines() {
+        if line.starts_with("## History") {
+            in_history = true;
+            continue;
+        }
+        if in_history {
+            if line.starts_with("| Date") || line.starts_with("|---") {
+                past_header = true;
+                continue;
+            }
+            if past_header && line.starts_with('|') {
+                rows.push(line.to_string());
+            }
+            if !line.starts_with('|') && past_header {
+                break;
+            }
+        }
+    }
+    rows
+}
+
+fn render_score_file(rows: &[ScoreRow], date: &HarnDate, existing_history: &[String]) -> String {
     let mut out = String::new();
     out.push_str("# Quality Scores\n\n");
     out.push_str(&format!("Last updated: {date}\n\n"));
     out.push_str("Grade each domain on the [evaluation criteria](evaluation/criteria.md). Update scores when significant changes land.\n\n");
-    out.push_str("| Domain | Functionality | Product Depth | Code Quality | Design/UX | Overall | Last Assessed |\n");
+    out.push_str("| Domain | Functionality | Product Depth | Code Quality | API Ergonomics | Overall | Last Assessed |\n");
     out.push_str("|--------|:---:|:---:|:---:|:---:|:---:|:---:|\n");
     for row in rows {
         out.push_str(&format!(
@@ -221,6 +307,10 @@ fn render_score_file(rows: &[ScoreRow], date: &HarnDate) -> String {
     out.push_str("\n## History\n\n");
     out.push_str("| Date | Domain | Change | Notes |\n");
     out.push_str("|------|--------|--------|-------|\n");
-    out.push_str(&format!("| {} | all | Initial assessment | |\n", date));
+    out.push_str(&format!("| {} | all | Score update | |\n", date));
+    for row in existing_history {
+        out.push_str(row);
+        out.push('\n');
+    }
     out
 }

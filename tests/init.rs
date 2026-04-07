@@ -152,6 +152,55 @@ fn init_both_tools_creates_both_entry_files() {
 }
 
 #[test]
+fn init_claude_only_creates_agents_md() {
+    let project = TempProject::with_git();
+    project.run_harn(&["init", "--tools", "claude-code", "--stack", "rust"]);
+
+    // AGENTS.md should always be generated regardless of tool selection
+    assert!(project.file_exists("AGENTS.md"));
+    assert!(project.file_exists("CLAUDE.md"));
+}
+
+#[test]
+fn init_claude_only_then_check_passes() {
+    let project = TempProject::with_git();
+    let output = project.run_harn(&["init", "--tools", "claude-code", "--stack", "rust"]);
+    assert!(output.status.success());
+
+    let output = project.run_harn(&["check"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("does not exist"),
+        "check should pass after claude-only init, got: {stdout}"
+    );
+}
+
+#[test]
+fn init_minimal_creates_essential_files() {
+    let project = TempProject::with_git();
+    let output = project.run_harn(&["init", "--tools", "codex", "--stack", "rust", "--minimal"]);
+    assert!(output.status.success());
+
+    // Minimal should create the three essential files
+    assert!(project.file_exists("AGENTS.md"));
+    assert!(project.file_exists("ARCHITECTURE.md"));
+    assert!(project.file_exists("docs/evaluation/criteria.md"));
+
+    // Required dirs should exist even in minimal mode
+    assert!(project.file_exists("docs/exec-plans/active"));
+    assert!(project.file_exists("docs/exec-plans/completed"));
+    assert!(project.file_exists("docs/templates"));
+
+    // check should not report missing required files
+    let output = project.run_harn(&["check"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("AGENTS.md does not exist"),
+        "Required files should exist after minimal init, got: {stdout}"
+    );
+}
+
+#[test]
 fn init_idempotent_second_run_skips() {
     let project = TempProject::with_git();
     project.run_harn(&["init", "--tools", "codex", "--stack", "rust"]);

@@ -29,20 +29,30 @@ stale_threshold_days = 14
 ignore_paths = [
     "docs/HARNESS-SPEC.md",
     "docs/HARNESS-GUIDE.md",
+    "docs/HARNESS-SPEC.zh-CN.md",
+    "docs/HARNESS-GUIDE.zh-CN.md",
 ]
 
 [[gc.mappings]]
 doc = "docs/commands.md"
-code = ["src/cli.rs", "src/init/mod.rs", "src/plan.rs", "src/sprint.rs", "src/check.rs", "src/gc.rs", "src/score.rs", "src/upgrade.rs", "src/status.rs", "src/assess.rs"]
+code = ["src/main.rs", "src/cli.rs", "src/init/mod.rs", "src/plan.rs", "src/sprint.rs", "src/check.rs", "src/gc.rs", "src/score.rs", "src/upgrade.rs", "src/status.rs", "src/assess/mod.rs", "src/assess/checks.rs", "src/assess/report.rs", "src/detect.rs", "src/types.rs", "src/config.rs", "src/util.rs"]
 
 [[gc.mappings]]
 doc = "docs/generated-content.md"
-code = ["templates/AGENTS.md.j2", "templates/ARCHITECTURE.md.j2", "templates/CLAUDE.md.j2", "templates/docs/design-docs/core-beliefs.md.j2", "templates/docs/evaluation/criteria.md.j2"]
+code = ["templates/AGENTS.md.j2", "templates/ARCHITECTURE.md.j2", "templates/CLAUDE.md.j2", "templates/docs/design-docs/core-beliefs.md.j2", "templates/docs/design-docs/index.md.j2", "templates/docs/evaluation/criteria.md.j2", "templates/docs/templates/exec-plan.md", "templates/docs/templates/sprint-contract.md", "templates/docs/templates/handoff.md"]
 
 [[gc.mappings]]
 doc = "docs/design.md"
-code = ["src/config.rs", "src/init/mod.rs", "src/init/render.rs", "src/gc.rs", "src/upgrade.rs"]
+code = ["src/main.rs", "src/cli.rs", "src/config.rs", "src/types.rs", "src/detect.rs", "src/init/mod.rs", "src/init/render.rs", "src/plan.rs", "src/sprint.rs", "src/check.rs", "src/gc.rs", "src/score.rs", "src/upgrade.rs", "src/status.rs", "src/util.rs", "src/assess/mod.rs", "src/assess/checks.rs", "src/assess/report.rs"]
 
 [[gc.mappings]]
 doc = "ARCHITECTURE.md"
-code = ["src/main.rs", "src/cli.rs", "src/config.rs", "src/detect.rs", "src/init/mod.rs", "src/init/render.rs", "src/plan.rs", "src/sprint.rs", "src/check.rs", "src/gc.rs", "src/score.rs", "src/upgrade.rs", "src/status.rs", "src/types.rs", "src/util.rs", "src/assess.rs"]
+code = ["src/main.rs", "src/cli.rs", "src/config.rs", "src/detect.rs", "src/init/mod.rs", "src/init/render.rs", "src/plan.rs", "src/sprint.rs", "src/check.rs", "src/gc.rs", "src/score.rs", "src/upgrade.rs", "src/status.rs", "src/types.rs", "src/util.rs", "src/assess/mod.rs", "src/assess/checks.rs", "src/assess/report.rs", "tests/architecture.rs", "tests/helpers/mod.rs"]
+
+[[gc.mappings]]
+doc = "docs/evaluation/criteria.md"
+code = ["src/check.rs", "src/score.rs", "templates/docs/evaluation/criteria.md.j2"]
+
+[[gc.mappings]]
+doc = "docs/product-spec.md"
+code = ["src/cli.rs", "src/init/mod.rs", "src/config.rs"]

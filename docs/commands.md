@@ -28,7 +28,7 @@ harn init [OPTIONS]
 | `--name <name>` | `-n` | Project name | Directory name |
 | `--tools <tools>` | `-t` | AI tools (comma-separated): `claude-code`, `codex` | Detected, or `codex,claude-code` |
 | `--stack <stack>` | `-s` | Stack hint: `rust`, `node`, `python`, `go`, `generic` | Detected from package manager |
-| `--interactive` | `-i` | Full interactive mode with all options | Off |
+| `--interactive` | `-i` | Prompt for AI tools even if detectable | Off |
 | `--minimal` | | Only generate essential core | Off |
 | `--template-dir <path>` | | Use custom external templates | Built-in |
 | `--force` | `-f` | Overwrite existing files without confirmation | Off |
@@ -45,9 +45,9 @@ harn init [OPTIONS]
                │
 ┌──────────────▼──────────────────────────┐
 │  2. PROMPT (only unresolved questions)  │
-│  AI tools? (if not detected)            │
-│  "Configure advanced options?" [y/N]    │
-│    └─→ Stack, custom paths              │
+│  AI tools? (multiselect, if not         │
+│    detected and TTY or --interactive)    │
+│  Non-TTY without -i: defaults to both   │
 └──────────────┬──────────────────────────┘
                │
 ┌──────────────▼──────────────────────────┐
@@ -103,17 +103,20 @@ $ harn init
 
 Detecting project environment...
   ✓ Git repository
-  ✓ Cargo.toml → Rust project
+  ✓ rust project
   ✗ No AI tool configs detected
-
-AI coding tools [codex, claude-code]: ↵
 
 Creating harness structure...
   ✓ AGENTS.md
   ✓ CLAUDE.md
   ✓ ARCHITECTURE.md
+  ✓ docs/design-docs/index.md
+  ✓ docs/design-docs/core-beliefs.md
+  ✓ docs/evaluation/criteria.md
+  ✓ docs/templates/exec-plan.md
+  ✓ docs/templates/sprint-contract.md
+  ✓ docs/templates/handoff.md
   ✓ .agents/harn/config.toml
-  ✓ docs/ (6 files, 4 empty dirs)
 
 Done! Created 10 files.
 
@@ -150,16 +153,18 @@ harn check [OPTIONS]
 | Category | Check | Severity |
 |----------|-------|----------|
 | Structure | Required files exist (AGENTS.md, ARCHITECTURE.md, criteria.md) | Error |
-| Structure | Required directories exist (exec-plans/active/, templates/) | Error |
+| Structure | Required directories exist (exec-plans/active/, exec-plans/completed/, templates/) | Error |
 | Content | Required files have substantive content (not just headers) | Warning |
 | Content | Init-generated files were customized (hash differs from init) | Warning |
 | References | Cross-references in AGENTS.md resolve to existing files | Error |
-| Config | `.agents/harn/config.toml` is valid and consistent | Error |
+| Config | `.agents/harn/config.toml` is valid and parseable (fail-fast: exits code 3 before report) | Error |
 | Quality | AGENTS.md exceeds 150 lines (should be a concise map) | Warning |
 | Quality | ARCHITECTURE.md missing dependency direction statement | Warning |
 | Quality | `docs/QUALITY_SCORE.md` does not exist | Warning |
 
 ### Example
+
+When all checks pass:
 
 ```
 $ harn check
@@ -167,9 +172,19 @@ $ harn check
 Harness integrity check: my-project
 
   ✓ AGENTS.md exists and has content
-  ✓ CLAUDE.md exists
   ✓ ARCHITECTURE.md exists and has content
-  ✓ docs/evaluation/criteria.md exists
+  ✓ docs/evaluation/criteria.md exists and has content
+
+All checks passed.
+```
+
+When issues are found (only warnings/errors are shown):
+
+```
+$ harn check
+
+Harness integrity check: my-project
+
   ⚠ ARCHITECTURE.md still matches init template (not customized)
   ✗ AGENTS.md references docs/references/api-spec.md which does not exist
 
@@ -191,7 +206,7 @@ harn status
 
 ### Output
 
-Aggregates information from config, active plans, current sprint, and recent check results into a single view. No options — designed to be the first command you run each day.
+Aggregates information from config, active plans, and current sprint into a single view. No options — designed to be the first command you run each day.
 
 ### Example
 
@@ -207,8 +222,6 @@ Sprint: implement login page (2/5 acceptance criteria)
 Active plans: 2
   • user-auth-oauth2 (0/3 milestones)
   • api-v2-migration (2/5 milestones)
-
-Last check: 2 days ago — 0 errors, 1 warning
 ```
 
 ```
@@ -220,9 +233,6 @@ Tools: codex, claude-code
 
 Sprint: none active
 Active plans: 0
-
-Last check: never run
-Tip: run `harn check` to validate harness integrity.
 ```
 
 ---
@@ -261,7 +271,7 @@ List active and recently completed plans with milestone and sprint progress.
 
 #### `harn plan complete <name>`
 
-Move plan from `active/` to `completed/`. Fails if the plan has an active linked sprint (complete the sprint first). Optionally prompt for retrospective notes.
+Move plan from `active/` to `completed/`. Fails if the plan has an active linked sprint (complete the sprint first).
 
 ### Example
 
@@ -283,12 +293,12 @@ Created: docs/exec-plans/active/2026-04-03-payments.md
 $ harn plan list
 
 Active plans:
-  1. user-auth-oauth2-integration (created 2026-04-03, 0/3 milestones)
+  1. 2026-04-03-user-auth-oauth2-integration (0/3 milestones)
      └─ sprint: implement-login-page (2/5 acceptance criteria)
-  2. api-v2-migration (created 2026-03-28, 2/5 milestones)
+  2. 2026-03-28-api-v2-migration (2/5 milestones)
 
 Completed:
-  3. initial-setup (completed 2026-03-25)
+  3. 2026-03-25-initial-setup
 ```
 
 ---
@@ -369,7 +379,7 @@ Parse and display `docs/QUALITY_SCORE.md` in a formatted table. If the file does
 
 #### `harn score update`
 
-Interactive workflow: walk through each domain (from ARCHITECTURE.md), prompt for a grade and notes. Creates `docs/QUALITY_SCORE.md` on first run.
+Interactive workflow: walk through each domain (from ARCHITECTURE.md), prompt for a grade. Creates `docs/QUALITY_SCORE.md` on first run.
 
 ---
 
@@ -390,6 +400,7 @@ harn gc [OPTIONS]
 | `--days <n>` | Staleness threshold in days | 14 (from config) |
 | `--report` | Output report only, no suggestions | Off |
 | `--json` | Output in JSON format (for tooling integration) | Off |
+| `--ci` | Exit code 1 on warnings, 2 on errors (for CI pipelines) | Off |
 
 ### Analysis
 
@@ -400,19 +411,30 @@ harn gc [OPTIONS]
 
 ### Example
 
+When issues are found:
+
 ```
 $ harn gc
 
 Scanning documentation freshness...
 
-  ⚠ docs/product-specs/onboarding.md — not modified in 32 days
-  ⚠ docs/design-docs/api-design.md — not modified in 28 days,
-    but src/api/ has 14 commits since then
-  ⚠ ARCHITECTURE.md — still matches init template
-  ✓ docs/evaluation/criteria.md — recently updated
+  ℹ docs/product-specs/onboarding.md — not modified in 32 days
+  ⚠ docs/design-docs/api-design.md — not modified since related code changed
+    (14 commit(s) since last doc update)
+  ⚠ ARCHITECTURE.md — still matches init template (not customized)
 
 Found 3 potentially stale documents.
 Consider reviewing with your AI coding tool, or updating manually.
+```
+
+When all documentation is current:
+
+```
+$ harn gc
+
+Scanning documentation freshness...
+
+  ✓ All documentation is current.
 ```
 
 ---
@@ -448,10 +470,10 @@ harn assess [OPTIONS]
 | 1 | §1.5 Testing | Full test suite executable in ≤1 minute |
 | 1 | §1.6 Dev Environment | Dev environment spinnable in one command |
 | 1 | §1.7 Safety | No secrets committed to repository |
+| 1 | §4.1 Entropy Management | Active entropy detection and correction |
 | 2 | §2.2 Execution Plans | Self-contained ExecPlans for complex work |
 | 2 | §2.3 Sprint Contracts | Negotiated sprint contracts |
 | 2 | §2.5 Quality Criteria | Explicit grading criteria |
-| 2 | §4.1 Entropy Management | Active entropy detection and correction |
 | 2 | §4.2 Knowledge Hygiene | Documentation-to-code mappings |
 
 ### Example
@@ -493,6 +515,47 @@ $ harn assess --json
 
 ---
 
+## `harn upgrade`
+
+Update harness structure when harn version changes. Compares embedded templates against the files generated at init time using stored content hashes to determine what's changed.
+
+### Usage
+
+```
+harn upgrade [OPTIONS]
+```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--dry-run` | Show what would change, don't write | Off |
+| `--template-dir <path>` | Use custom external templates instead of built-in | Built-in |
+
+### Behavior
+
+- **Unchanged from template** (hash matches `[init.file_hashes]`): safe to overwrite with new version.
+- **Customized** (hash differs): write new content as `.harn-upgrade` sidecar next to the existing file for manual merge.
+- **No hash record**: treated as customized — sidecar only, never overwrite.
+- **New template paths** in newer harn version: created directly (no sidecar needed).
+- Config `harn_version` is updated after a successful upgrade.
+
+### Example
+
+```
+$ harn upgrade
+
+  ✓ docs/evaluation/criteria.md (already up to date)
+  updated docs/templates/exec-plan.md (updated from template)
+  sidecar AGENTS.md (modified — sidecar created)
+
+Upgrade complete. Updated 1, created 0, sidecar 1 file(s).
+
+Review .harn-upgrade files and merge changes manually or with your AI tool.
+```
+
+---
+
 ## Exit Codes
 
 | Code | Meaning | Used by |
@@ -500,7 +563,7 @@ $ harn assess --json
 | 0 | Success / no issues | All commands |
 | 1 | Warnings found (with `--ci`) | `harn check`, `harn gc` |
 | 2 | Errors found | `harn check`, `harn gc` |
-| 3 | Configuration error (missing config, invalid TOML) | All commands |
+| 3 | Configuration error (missing config, invalid TOML) | `harn check`, `harn gc`, `harn status`, `harn upgrade` |
 
 ---
 

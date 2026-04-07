@@ -8,18 +8,26 @@ use crate::config::Config;
 use crate::init::render::{self, RenderContext};
 use crate::util::sha256_hex;
 
-pub fn run(project_root: &Path, dry_run: bool) -> Result<()> {
+pub fn run(
+    project_root: &Path,
+    dry_run: bool,
+    template_dir: Option<std::path::PathBuf>,
+) -> Result<()> {
     let mut config = Config::load(project_root)?;
 
     let ctx = RenderContext {
-        project_name: config.project.name.clone(),
+        project_name: config.project.name.as_str().to_string(),
         project_description: "TODO: Describe your project in 1-2 sentences.".to_string(),
-        date: config.project.created.clone(),
+        date: config.project.created.as_str().to_string(),
         harn_version: env!("CARGO_PKG_VERSION").to_string(),
         stack: config.init.stack,
     };
 
-    let new_files = render::render_all(&ctx)?;
+    let new_files = if let Some(ref tpl_dir) = template_dir {
+        render::render_all_from_dir(tpl_dir, &ctx)?
+    } else {
+        render::render_all(&ctx)?
+    };
     let new_files = render::filter_by_tools(new_files, &config.tools.agents);
 
     println!();

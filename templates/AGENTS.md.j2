@@ -66,10 +66,12 @@ This project uses [`harn`](https://github.com/imsuven/harn) for harness lifecycl
 
 | Command | Purpose |
 |---------|---------|
+| `harn init` | Bootstrap harness structure for a new or existing project |
 | `harn check` | Validate harness structure integrity |
 | `harn plan new "description"` | Create an execution plan |
-| `harn sprint new "description"` | Create a sprint contract |
-| `harn sprint done` | Complete current sprint |
+| `harn sprint` | Create sprint contracts (`new "description"`) and complete the current sprint (`done`) |
 | `harn status` | Show current project state at a glance |
 | `harn gc` | Detect stale documentation |
 | `harn score update` | Assess and record quality grades |
+| `harn upgrade` | Update harness structure when harn version changes |
+| `harn assess` | Evaluate harness maturity against HARNESS-SPEC levels |

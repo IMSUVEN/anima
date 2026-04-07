@@ -13,9 +13,19 @@ From `src/types.rs` (actual harn code):
 ```rust
 /// ASCII-only slug used in filenames for plans, sprints, etc.
 /// Invariant: lowercase ASCII letters, digits, and hyphens only; no leading/trailing hyphens.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct Slug(String);
+
+impl<'de> Deserialize<'de> for Slug {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Slug::from_explicit(&s).map_err(serde::de::Error::custom)
+    }
+}
 
 impl Slug {
     pub fn from_explicit(raw: &str) -> Result<Self> {
@@ -24,7 +34,8 @@ impl Slug {
             bail!("Slug cannot be empty. Provide a non-empty value with --slug.");
         }
         if !s.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-') {
-            bail!("Slug must contain only lowercase ASCII letters, digits, and hyphens: {raw}. Use --slug with a valid value.");
+            bail!("Slug must contain only lowercase ASCII letters, digits, and hyphens: \
+                   {raw}. Use --slug with a valid value (e.g., --slug my-feature).");
         }
         let s = s.trim_matches('-').to_string();
         if s.is_empty() {
@@ -35,7 +46,7 @@ impl Slug {
 }
 ```
 
-**Why A**: The type wraps `String` so it cannot be confused with other strings. Validation happens at construction time — once you have a `Slug`, the invariant holds everywhere. Error messages include both what happened and what to do. `#[serde(transparent)]` preserves the slug as a plain string in serialized formats.
+**Why A**: The type wraps `String` so it cannot be confused with other strings. Validation happens at construction time — once you have a `Slug`, the invariant holds everywhere. Error messages include both what happened and what to do. `#[serde(transparent)]` preserves the slug as a plain string in serialized formats. Custom `Deserialize` rejects invalid slugs at deserialization time, maintaining the invariant even when loading from TOML.
 
 ---
 

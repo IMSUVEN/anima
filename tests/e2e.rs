@@ -168,10 +168,15 @@ fn assess_json_output() {
 
     let stdout = String::from_utf8_lossy(&output.stdout);
     let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
-    let arr = parsed.as_array().unwrap();
-    assert!(!arr.is_empty());
 
-    for item in arr {
+    assert!(parsed.get("project").is_some(), "missing 'project' field");
+    assert!(parsed.get("level").is_some(), "missing 'level' field");
+    assert!(parsed.get("level1_pct").is_some(), "missing 'level1_pct'");
+    assert!(parsed.get("level2_pct").is_some(), "missing 'level2_pct'");
+
+    let checks = parsed.get("checks").and_then(|v| v.as_array()).unwrap();
+    assert!(!checks.is_empty());
+    for item in checks {
         assert!(item.get("category").is_some());
         assert!(item.get("status").is_some());
         assert!(item.get("level").is_some());
@@ -226,4 +231,55 @@ fn multiple_plans_and_sprints() {
     let output = project.run_harn(&["plan", "list"]);
     let stdout = String::from_utf8_lossy(&output.stdout);
     assert!(stdout.contains("Completed"));
+}
+
+#[test]
+fn verbose_and_quiet_conflict() {
+    let project = TempProject::with_git();
+    project.run_harn(&["init", "--tools", "codex", "--stack", "rust"]);
+
+    let output = project.run_harn(&["--verbose", "--quiet", "status"]);
+    assert!(
+        !output.status.success(),
+        "--verbose and --quiet should not be used together"
+    );
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(stderr.contains("--verbose") && stderr.contains("--quiet"));
+}
+
+#[test]
+fn no_color_flag_accepted() {
+    let project = TempProject::with_git();
+    project.run_harn(&["init", "--tools", "codex", "--stack", "rust"]);
+
+    let output = project.run_harn(&["--no-color", "status"]);
+    assert!(output.status.success());
+}
+
+#[test]
+fn config_error_exits_3() {
+    let project = TempProject::with_git();
+    // No init → no config
+
+    let output = project.run_harn(&["check"]);
+    let code = output.status.code().unwrap_or(-1);
+    assert_eq!(code, 3, "missing config should exit 3, got {code}");
+}
+
+#[test]
+fn assess_json_has_proper_schema() {
+    let project = TempProject::with_git();
+    project.run_harn(&["init", "--tools", "codex", "--stack", "rust"]);
+
+    let output = project.run_harn(&["assess", "--json"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+
+    let level = parsed.get("level").and_then(|v| v.as_u64()).unwrap();
+    assert!(level <= 3, "level should be 0-3, got {level}");
+
+    let l1 = parsed.get("level1_pct").and_then(|v| v.as_u64()).unwrap();
+    let l2 = parsed.get("level2_pct").and_then(|v| v.as_u64()).unwrap();
+    assert!(l1 <= 100, "level1_pct should be 0-100, got {l1}");
+    assert!(l2 <= 100, "level2_pct should be 0-100, got {l2}");
 }

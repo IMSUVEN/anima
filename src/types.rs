@@ -1,14 +1,24 @@
 use std::fmt;
 use std::path::{Path, PathBuf};
 
-use anyhow::{bail, Result};
-use serde::{Deserialize, Serialize};
+use anyhow::{bail, Context, Result};
+use serde::{Deserialize, Deserializer, Serialize};
 
 /// ASCII-only slug used in filenames for plans, sprints, etc.
 /// Invariant: lowercase ASCII letters, digits, and hyphens only; no leading/trailing hyphens.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct Slug(String);
+
+impl<'de> Deserialize<'de> for Slug {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let s = String::deserialize(deserializer)?;
+        Slug::from_explicit(&s).map_err(serde::de::Error::custom)
+    }
+}
 
 impl Slug {
     /// Build a slug from an explicit `--slug` value (light validation only).
@@ -58,22 +68,21 @@ impl Slug {
     pub fn sequential(prefix: &str, dir: &Path) -> Result<Self> {
         for i in 1..=999 {
             let candidate = format!("{prefix}-{i:03}");
-            let pattern = format!("*-{candidate}.md");
-            let exists = dir
-                .read_dir()
-                .map(|entries| {
-                    entries.filter_map(|e| e.ok()).any(|e| {
-                        e.file_name()
-                            .to_string_lossy()
-                            .ends_with(&format!("-{candidate}.md"))
-                    })
-                })
-                .unwrap_or(false);
+            let entries = dir.read_dir().with_context(|| {
+                format!(
+                    "Could not read directory {} for slug generation",
+                    dir.display()
+                )
+            })?;
+            let exists = entries.filter_map(|e| e.ok()).any(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .ends_with(&format!("-{candidate}.md"))
+            });
 
             if !exists {
                 return Ok(Self(candidate));
             }
-            drop(pattern);
         }
         bail!(
             "Could not generate sequential slug after 999 attempts in {}.\n\
@@ -95,7 +104,7 @@ impl fmt::Display for Slug {
 
 /// Project name — human-readable, used in templates and config.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(try_from = "String", into = "String")]
 pub struct ProjectName(String);
 
 impl ProjectName {
@@ -118,9 +127,23 @@ impl fmt::Display for ProjectName {
     }
 }
 
+impl TryFrom<String> for ProjectName {
+    type Error = anyhow::Error;
+
+    fn try_from(s: String) -> Result<Self> {
+        Self::new(s)
+    }
+}
+
+impl From<ProjectName> for String {
+    fn from(p: ProjectName) -> Self {
+        p.0
+    }
+}
+
 /// Date formatted as YYYY-MM-DD for filenames and config.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(transparent)]
+#[serde(try_from = "String", into = "String")]
 pub struct HarnDate(String);
 
 impl HarnDate {
@@ -128,12 +151,34 @@ impl HarnDate {
         Self(chrono::Local::now().format("%Y-%m-%d").to_string())
     }
 
-    pub fn from_str_unchecked(s: &str) -> Self {
-        Self(s.to_string())
+    /// Parse and validate a YYYY-MM-DD date string.
+    pub fn parse(s: &str) -> Result<Self> {
+        let s = s.trim();
+        if s.is_empty() {
+            bail!("Date cannot be empty. Use YYYY-MM-DD format (e.g., 2026-04-07).");
+        }
+        if chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_err() {
+            bail!("Invalid date \"{s}\". Use YYYY-MM-DD format (e.g., 2026-04-07).");
+        }
+        Ok(Self(s.to_string()))
     }
 
     pub fn as_str(&self) -> &str {
         &self.0
+    }
+}
+
+impl TryFrom<String> for HarnDate {
+    type Error = anyhow::Error;
+
+    fn try_from(s: String) -> Result<Self> {
+        Self::parse(&s)
+    }
+}
+
+impl From<HarnDate> for String {
+    fn from(d: HarnDate) -> Self {
+        d.0
     }
 }
 
@@ -144,13 +189,30 @@ impl fmt::Display for HarnDate {
 }
 
 /// A resolved file path within the project, always relative to project root.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
 #[serde(transparent)]
 pub struct HarnPath(PathBuf);
 
+impl<'de> Deserialize<'de> for HarnPath {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: Deserializer<'de>,
+    {
+        let path = PathBuf::deserialize(deserializer)?;
+        Self::new(path).map_err(serde::de::Error::custom)
+    }
+}
+
 impl HarnPath {
-    pub fn new(path: impl Into<PathBuf>) -> Self {
-        Self(path.into())
+    pub fn new(path: impl Into<PathBuf>) -> Result<Self> {
+        let path = path.into();
+        if path.is_absolute() {
+            bail!(
+                "HarnPath must be relative, got absolute path: {}",
+                path.display()
+            );
+        }
+        Ok(Self(path))
     }
 
     pub fn resolve(&self, root: &Path) -> PathBuf {
@@ -247,6 +309,17 @@ impl std::str::FromStr for AiTool {
             other => bail!("Unknown AI tool: {other}. Valid options: claude-code, codex"),
         }
     }
+}
+
+/// Active sprint state, serialized to `.agents/harn/current-sprint.toml`.
+/// Shared across plan, sprint, and status modules.
+#[derive(Debug, Serialize, Deserialize)]
+pub struct SprintState {
+    pub name: String,
+    pub slug: Slug,
+    pub created: HarnDate,
+    pub plan: Option<String>,
+    pub contract_path: HarnPath,
 }
 
 fn collapse_hyphens(s: &str) -> String {
@@ -358,14 +431,35 @@ mod tests {
     }
 
     #[test]
-    fn harn_date_format() {
-        let d = HarnDate::from_str_unchecked("2026-04-03");
+    fn harn_date_parse_valid() {
+        let d = HarnDate::parse("2026-04-03").unwrap();
         assert_eq!(d.as_str(), "2026-04-03");
     }
 
     #[test]
+    fn harn_date_parse_rejects_invalid() {
+        assert!(HarnDate::parse("not-a-date").is_err());
+        assert!(HarnDate::parse("").is_err());
+        assert!(HarnDate::parse("2026-13-01").is_err());
+    }
+
+    #[test]
+    fn harn_date_serde_roundtrip() {
+        let d = HarnDate::parse("2026-04-03").unwrap();
+        let json = serde_json::to_string(&d).unwrap();
+        let parsed: HarnDate = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.as_str(), "2026-04-03");
+    }
+
+    #[test]
+    fn harn_date_serde_rejects_invalid() {
+        let result: Result<HarnDate, _> = serde_json::from_str("\"not-a-date\"");
+        assert!(result.is_err());
+    }
+
+    #[test]
     fn harn_path_resolve() {
-        let p = HarnPath::new("docs/design.md");
+        let p = HarnPath::new("docs/design.md").unwrap();
         let resolved = p.resolve(Path::new("/tmp/project"));
         assert_eq!(resolved, PathBuf::from("/tmp/project/docs/design.md"));
     }

@@ -29,7 +29,7 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for crate structure, module boundaries, a
 - **Type safety.** Rust's type system is the primary enforcement mechanism. Use newtypes for domain identifiers (slugs, paths, dates). No `String` where a typed wrapper communicates intent.
 - **No silent failures.** Every error path produces a user-visible message with what happened and what to do. Use `anyhow` for application errors with context chains.
 - **Non-destructive by default.** Never overwrite existing user files without explicit `--force`. Skip and report.
-- **Offline-first.** Core operations (`init`, `check`, `plan`, `sprint`, `status`) must not require network access.
+- **Offline-first.** All subcommands are offline — none require network access.
 - **Templates are embedded.** All templates compile into the binary via `include_dir!`. The `--template-dir` flag is the escape hatch.
 - **Test speed.** Test suite must stay under 60 seconds. Use temp directories, not real filesystem fixtures that accumulate.
 - **Stop on ambiguity.** When encountering destructive operations, unclear requirements, or security-sensitive changes, report what you found and wait for guidance rather than proceeding.

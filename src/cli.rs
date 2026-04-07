@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use clap::{Parser, Subcommand};
 
 /// A CLI tool that bootstraps and maintains harness structures for AI-agent-driven development.
@@ -103,6 +103,10 @@ pub enum Command {
         /// Output in JSON format
         #[arg(long)]
         json: bool,
+
+        /// Exit code 1 on warnings, 2 on errors (for CI pipelines)
+        #[arg(long)]
+        ci: bool,
     },
 
     /// View and update quality grades
@@ -116,6 +120,10 @@ pub enum Command {
         /// Show what would change, don't write
         #[arg(long)]
         dry_run: bool,
+
+        /// Use custom external templates (mirrors init's escape hatch)
+        #[arg(long)]
+        template_dir: Option<PathBuf>,
     },
 
     /// Assess harness maturity against HARNESS-SPEC levels
@@ -181,9 +189,13 @@ pub enum ScoreAction {
 }
 
 pub fn dispatch(cli: Cli) -> Result<u8> {
-    let project_root = cli
-        .project_dir
-        .unwrap_or_else(|| std::env::current_dir().expect("Could not determine current directory"));
+    let project_root = match cli.project_dir {
+        Some(dir) => dir,
+        None => std::env::current_dir().context(
+            "Could not determine current directory.\n\
+             The working directory may have been deleted. Use --dir to specify a project path.",
+        )?,
+    };
 
     match cli.command {
         Command::Init {
@@ -196,22 +208,17 @@ pub fn dispatch(cli: Cli) -> Result<u8> {
             force,
             dry_run,
         } => {
-            let detection = crate::detect::detect(&project_root);
-            let resolved_tools = crate::init::resolve_tools(&tools, &detection, interactive)?;
-            let resolved_stack = crate::init::resolve_stack(&stack, &detection)?;
-            let project_name = crate::init::resolve_project_name(&name, &project_root)?;
-
-            let opts = crate::init::InitOptions {
-                project_name,
-                tools: resolved_tools,
-                stack: resolved_stack,
-                force,
-                dry_run,
+            crate::init::run_from_args(
+                &project_root,
+                name,
+                tools,
+                stack,
+                interactive,
                 minimal,
                 template_dir,
-                interactive,
-            };
-            crate::init::run(&project_root, opts, &detection)?;
+                force,
+                dry_run,
+            )?;
             Ok(0)
         }
         Command::Check { fix, ci } => crate::check::run(&project_root, fix, ci),
@@ -248,10 +255,12 @@ pub fn dispatch(cli: Cli) -> Result<u8> {
             crate::status::run(&project_root)?;
             Ok(0)
         }
-        Command::Gc { days, report, json } => {
-            crate::gc::run(&project_root, days, report, json)?;
-            Ok(0)
-        }
+        Command::Gc {
+            days,
+            report,
+            json,
+            ci,
+        } => crate::gc::run(&project_root, days, report, json, ci),
         Command::Score { action } => {
             match action {
                 ScoreAction::Show => crate::score::show(&project_root)?,
@@ -259,8 +268,11 @@ pub fn dispatch(cli: Cli) -> Result<u8> {
             }
             Ok(0)
         }
-        Command::Upgrade { dry_run } => {
-            crate::upgrade::run(&project_root, dry_run)?;
+        Command::Upgrade {
+            dry_run,
+            template_dir,
+        } => {
+            crate::upgrade::run(&project_root, dry_run, template_dir)?;
             Ok(0)
         }
         Command::Assess { json } => {

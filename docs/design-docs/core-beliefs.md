@@ -20,7 +20,7 @@ Auto-detect the project environment (git, package manager, existing AI tool conf
 
 ## 5. Offline-First
 
-Core operations (`init`, `check`, `plan`, `sprint`, `status`) must not require network access. harn is a local tool that reads and writes files. No telemetry, no package registry calls, no API hits for core functionality.
+All subcommands are offline — none require network access. harn is a local tool that reads and writes files. No telemetry, no package registry calls, no API hits.
 
 ## 6. Type Safety via Newtypes
 

@@ -5,7 +5,21 @@ use std::path::{Path, PathBuf};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::types::{AiTool, Stack};
+use crate::types::{AiTool, HarnDate, ProjectName, Stack};
+
+/// Typed error for configuration failures. Used by main to select exit code 3.
+#[derive(Debug)]
+pub struct ConfigError {
+    msg: String,
+}
+
+impl std::fmt::Display for ConfigError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.msg)
+    }
+}
+
+impl std::error::Error for ConfigError {}
 
 /// Root configuration stored in `.agents/harn/config.toml`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,8 +33,8 @@ pub struct Config {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProjectSection {
-    pub name: String,
-    pub created: String,
+    pub name: ProjectName,
+    pub created: HarnDate,
     pub harn_version: String,
 }
 
@@ -61,21 +75,28 @@ pub const CONFIG_REL_PATH: &str = ".agents/harn/config.toml";
 
 impl Config {
     /// Read config from the standard location under `project_root`.
+    /// Returns `ConfigError` as the error type so main can select exit code 3 via downcast.
     pub fn load(project_root: &Path) -> Result<Self> {
         let path = config_path(project_root);
-        let contents = fs::read_to_string(&path).with_context(|| {
-            format!(
-                "Could not read harn config at {}.\n\
-                 Run `harn init` to create a harness, or use `--dir` to specify the project directory.",
-                path.display()
-            )
+        let contents = fs::read_to_string(&path).map_err(|e| {
+            anyhow::Error::new(ConfigError {
+                msg: format!(
+                    "Could not read harn config at {}: {}\n\
+                     Run `harn init` to create a harness, or use `--dir` to specify the project directory.",
+                    path.display(),
+                    e
+                ),
+            })
         })?;
-        let config: Config = toml::from_str(&contents).with_context(|| {
-            format!(
-                "Invalid config at {}.\n\
-                 Fix the TOML syntax or run `harn init --force` to regenerate.",
-                path.display()
-            )
+        let config: Config = toml::from_str(&contents).map_err(|e| {
+            anyhow::Error::new(ConfigError {
+                msg: format!(
+                    "Invalid config at {}.\n\
+                     Fix the TOML syntax or run `harn init --force` to regenerate.\n\
+                     Detail: {e}",
+                    path.display()
+                ),
+            })
         })?;
         Ok(config)
     }
@@ -116,8 +137,8 @@ mod tests {
     fn sample_config() -> Config {
         Config {
             project: ProjectSection {
-                name: "test-project".to_string(),
-                created: "2026-04-03".to_string(),
+                name: ProjectName::new("test-project").unwrap(),
+                created: HarnDate::parse("2026-04-03").unwrap(),
                 harn_version: env!("CARGO_PKG_VERSION").to_string(),
             },
             tools: ToolsSection {
@@ -148,7 +169,8 @@ mod tests {
         let serialized = toml::to_string_pretty(&config).unwrap();
         let deserialized: Config = toml::from_str(&serialized).unwrap();
 
-        assert_eq!(deserialized.project.name, "test-project");
+        assert_eq!(deserialized.project.name.as_str(), "test-project");
+        assert_eq!(deserialized.project.created.as_str(), "2026-04-03");
         assert_eq!(deserialized.tools.agents.len(), 2);
         assert_eq!(deserialized.init.stack, Stack::Rust);
         assert_eq!(
@@ -165,8 +187,52 @@ mod tests {
         config.save(dir.path()).unwrap();
 
         let loaded = Config::load(dir.path()).unwrap();
-        assert_eq!(loaded.project.name, "test-project");
+        assert_eq!(loaded.project.name.as_str(), "test-project");
         assert_eq!(loaded.init.stack, Stack::Rust);
+    }
+
+    #[test]
+    fn config_load_rejects_empty_project_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = config_path(dir.path());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        // Write raw TOML with empty name to bypass ProjectName::new
+        fs::write(
+            &path,
+            "[project]\nname = \"\"\ncreated = \"2026-04-03\"\nharn_version = \"0.1.0\"\n\
+             [tools]\nagents = [\"codex\"]\n\
+             [init]\nstack = \"rust\"\n\
+             [check]\nrequired_files = []\n\
+             [gc]\nstale_threshold_days = 14\n",
+        )
+        .unwrap();
+
+        let result = Config::load(dir.path());
+        assert!(result.is_err());
+        let err = format!("{:#}", result.unwrap_err());
+        assert!(
+            err.contains("empty") || err.contains("Project name"),
+            "Error should mention empty project name: {err}"
+        );
+    }
+
+    #[test]
+    fn config_load_rejects_invalid_date() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = config_path(dir.path());
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(
+            &path,
+            "[project]\nname = \"test\"\ncreated = \"not-a-date\"\nharn_version = \"0.1.0\"\n\
+             [tools]\nagents = [\"codex\"]\n\
+             [init]\nstack = \"rust\"\n\
+             [check]\nrequired_files = []\n\
+             [gc]\nstale_threshold_days = 14\n",
+        )
+        .unwrap();
+
+        let result = Config::load(dir.path());
+        assert!(result.is_err());
     }
 
     #[test]
@@ -178,6 +244,16 @@ mod tests {
         assert!(
             err.contains("harn init"),
             "Error should suggest harn init: {err}"
+        );
+    }
+
+    #[test]
+    fn config_error_is_downcastable_for_missing_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let err = Config::load(dir.path()).unwrap_err();
+        assert!(
+            err.downcast_ref::<ConfigError>().is_some(),
+            "Config errors must be ConfigError for exit code 3"
         );
     }
 }

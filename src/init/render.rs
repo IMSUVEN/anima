@@ -66,6 +66,7 @@ pub fn init_directories() -> Vec<&'static str> {
     vec![
         "docs/exec-plans/active",
         "docs/exec-plans/completed",
+        "docs/templates",
         "docs/product-specs",
         "docs/references",
     ]
@@ -176,8 +177,7 @@ pub fn filter_by_tools(
         .filter(|f| {
             match f.rel_path.as_str() {
                 "CLAUDE.md" => tools.contains(&AiTool::ClaudeCode),
-                "AGENTS.md" => tools.contains(&AiTool::Codex),
-                _ => true, // all other files are always included
+                _ => true, // AGENTS.md and all other files are always included
             }
         })
         .collect()

@@ -112,8 +112,8 @@ pub fn run(project_root: &Path, opts: InitOptions, detection: &DetectionResult) 
 
     let config = Config {
         project: ProjectSection {
-            name: opts.project_name.as_str().to_string(),
-            created: date.as_str().to_string(),
+            name: opts.project_name.clone(),
+            created: date.clone(),
             harn_version: env!("CARGO_PKG_VERSION").to_string(),
         },
         tools: ToolsSection {
@@ -177,11 +177,15 @@ pub fn resolve_tools(
             .collect::<Result<Vec<_>>>();
     }
 
+    if interactive {
+        return prompt_tools();
+    }
+
     if !detection.ai_tools.is_empty() {
         return Ok(detection.ai_tools.clone());
     }
 
-    if interactive || atty_stdout() {
+    if atty_stdout() {
         prompt_tools()
     } else {
         Ok(vec![AiTool::Codex, AiTool::ClaudeCode])
@@ -280,6 +284,38 @@ fn print_next_steps() {
     println!("  2. Edit ARCHITECTURE.md — define domain structure and layer rules");
     println!("  3. Review docs/evaluation/criteria.md — adjust quality criteria");
     println!("  4. Run `harn check` to validate structural integrity");
+}
+
+/// Entry point for `harn init` called from CLI dispatch.
+/// Performs detection, resolution, and init in one call so cli.rs stays pure dispatch.
+#[allow(clippy::too_many_arguments)]
+pub fn run_from_args(
+    project_root: &Path,
+    name: Option<String>,
+    tools: Option<Vec<String>>,
+    stack: Option<String>,
+    interactive: bool,
+    minimal: bool,
+    template_dir: Option<std::path::PathBuf>,
+    force: bool,
+    dry_run: bool,
+) -> Result<()> {
+    let detection = crate::detect::detect(project_root);
+    let resolved_tools = resolve_tools(&tools, &detection, interactive)?;
+    let resolved_stack = resolve_stack(&stack, &detection)?;
+    let project_name = resolve_project_name(&name, project_root)?;
+
+    let opts = InitOptions {
+        project_name,
+        tools: resolved_tools,
+        stack: resolved_stack,
+        force,
+        dry_run,
+        minimal,
+        template_dir,
+        interactive,
+    };
+    run(project_root, opts, &detection)
 }
 
 pub use crate::util::sha256_hex;

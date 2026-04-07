@@ -3,22 +3,12 @@ use std::path::Path;
 
 use anyhow::{bail, Context, Result};
 use console::style;
-use serde::{Deserialize, Serialize};
 
-use crate::types::{HarnDate, Slug};
+use crate::types::{HarnDate, Slug, SprintState};
 
 const ACTIVE_DIR: &str = "docs/exec-plans/active";
 const COMPLETED_DIR: &str = "docs/exec-plans/completed";
 const SPRINT_STATE: &str = ".agents/harn/current-sprint.toml";
-
-#[derive(Debug, Serialize, Deserialize)]
-pub struct SprintState {
-    pub name: String,
-    pub slug: String,
-    pub created: String,
-    pub plan: Option<String>,
-    pub contract_path: String,
-}
 
 pub fn new_sprint(
     project_root: &Path,
@@ -53,16 +43,23 @@ pub fn new_sprint(
     let contract_path = format!("{ACTIVE_DIR}/{filename}");
     let full_path = project_root.join(&contract_path);
 
-    // Validate plan exists if linked
     if let Some(plan_name) = plan {
         let plan_exists = fs::read_dir(&active_dir)
-            .map(|entries| {
-                entries.filter_map(|e| e.ok()).any(|e| {
-                    let name = e.file_name().to_string_lossy().to_string();
-                    name.contains(plan_name) && !name.starts_with("sprint-")
-                })
-            })
-            .unwrap_or(false);
+            .with_context(|| {
+                format!(
+                    "Could not read {}.\nCheck that the directory exists and has correct permissions.",
+                    active_dir.display()
+                )
+            })?
+            .filter_map(|e| e.ok())
+            .any(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.starts_with("sprint-") || name.starts_with("handoff-") {
+                    return false;
+                }
+                let slug = extract_slug_from_plan_filename(&name);
+                slug == plan_name || name.contains(&format!("-{plan_name}.md"))
+            });
         if !plan_exists {
             bail!(
                 "No active plan found matching \"{plan_name}\".\n\
@@ -86,10 +83,10 @@ pub fn new_sprint(
 
     let state = SprintState {
         name: description.to_string(),
-        slug: slug.as_str().to_string(),
-        created: date.as_str().to_string(),
+        slug,
+        created: date,
         plan: plan.map(|s| s.to_string()),
-        contract_path: contract_path.clone(),
+        contract_path: crate::types::HarnPath::new(&contract_path)?,
     };
 
     save_sprint_state(project_root, &state)?;
@@ -117,7 +114,7 @@ pub fn sprint_status(project_root: &Path) -> Result<()> {
     }
 
     let state = load_sprint_state(project_root)?;
-    let contract_path = project_root.join(&state.contract_path);
+    let contract_path = state.contract_path.resolve(project_root);
 
     println!();
     println!(
@@ -172,8 +169,10 @@ pub fn sprint_done(project_root: &Path) -> Result<()> {
     }
 
     // Move contract from active to completed
-    let source = project_root.join(&state.contract_path);
-    let filename = Path::new(&state.contract_path)
+    let source = state.contract_path.resolve(project_root);
+    let filename = state
+        .contract_path
+        .as_path()
         .file_name()
         .map(|f| f.to_string_lossy().to_string())
         .with_context(|| {
@@ -193,9 +192,17 @@ pub fn sprint_done(project_root: &Path) -> Result<()> {
                 dest.display()
             )
         })?;
+    } else {
+        bail!(
+            "Sprint contract not found: {}\n\
+             The contract file may have been moved or deleted.\n\
+             To force cleanup, delete {} manually.",
+            source.display(),
+            SPRINT_STATE
+        );
     }
 
-    // Remove sprint state
+    // Remove sprint state only after successful archive
     let state_path = project_root.join(SPRINT_STATE);
     fs::remove_file(&state_path).with_context(|| {
         format!(
@@ -251,6 +258,20 @@ fn generate_handoff(project_root: &Path, state: &SprintState) -> Result<()> {
     println!("  - Next steps");
 
     Ok(())
+}
+
+fn extract_slug_from_plan_filename(filename: &str) -> &str {
+    let without_ext = filename.trim_end_matches(".md");
+    // Skip YYYY-MM-DD- prefix (11 chars) if present
+    if without_ext.len() > 11
+        && without_ext.as_bytes().get(4) == Some(&b'-')
+        && without_ext.as_bytes().get(7) == Some(&b'-')
+        && without_ext.as_bytes().get(10) == Some(&b'-')
+    {
+        &without_ext[11..]
+    } else {
+        without_ext
+    }
 }
 
 fn resolve_slug(description: &str, slug_override: Option<&str>, dir: &Path) -> Result<Slug> {

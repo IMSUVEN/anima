@@ -21,6 +21,7 @@ harn sprint        # manage sprint contracts
 harn gc            # detect stale docs via git history
 harn score         # view and update quality grades
 harn upgrade       # update templates to latest harn version
+harn assess        # evaluate harness maturity against HARNESS-SPEC
 ```
 
 ## Supported AI Tools
@@ -34,7 +35,7 @@ Both point to the same `docs/` knowledge structure.
 
 - **Single binary** — Rust, no runtime dependencies
 - **Offline-first** — no network calls for core operations
-- **Non-destructive** — never overwrites without confirmation
+- **Non-destructive** — never overwrites without explicit `--force`
 - **Tool-agnostic** — universal knowledge layer, tool-specific entry points
 
 ## Quick Start

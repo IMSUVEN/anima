@@ -1,49 +1,9 @@
-use anyhow::Result;
-use console::style;
 use std::fs;
 use std::path::Path;
 
-/// Harness maturity assessment based on HARNESS-SPEC.md levels.
-///
-/// Checks project structure, tooling, and workflow artifacts against
-/// the specification's MUST/SHOULD requirements at each maturity level.
+use super::{Assessment, Obligation, Status};
 
-#[derive(Debug)]
-struct Assessment {
-    category: &'static str,
-    requirement: &'static str,
-    level: u8,
-    obligation: Obligation,
-    status: Status,
-    detail: String,
-}
-
-#[derive(Debug, Clone, Copy)]
-enum Obligation {
-    Must,
-    Should,
-}
-
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Status {
-    Pass,
-    Fail,
-    Partial,
-}
-
-pub fn run(project_root: &Path, json: bool) -> Result<()> {
-    let assessments = run_assessments(project_root);
-
-    if json {
-        print_json(&assessments)?;
-    } else {
-        print_report(project_root, &assessments);
-    }
-
-    Ok(())
-}
-
-fn run_assessments(root: &Path) -> Vec<Assessment> {
+pub(super) fn run_assessments(root: &Path) -> Vec<Assessment> {
     vec![
         // === Level 1: Single Agent + Loop ===
         // §1.1 Repository Knowledge
@@ -88,7 +48,19 @@ fn check_agents_md(root: &Path) -> Assessment {
         };
     }
 
-    let content = fs::read_to_string(&path).unwrap_or_default();
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            return Assessment {
+                category: "Repository Knowledge",
+                requirement: "AGENTS.md at repository root as agent entry point",
+                level: 1,
+                obligation: Obligation::Must,
+                status: Status::Partial,
+                detail: format!("AGENTS.md exists but could not be read: {e}"),
+            };
+        }
+    };
     let lines = content.lines().count();
 
     if lines > 150 {
@@ -117,30 +89,48 @@ fn check_agents_md(root: &Path) -> Assessment {
 
 fn check_architecture_md(root: &Path) -> Assessment {
     let path = root.join("ARCHITECTURE.md");
-    let status = if path.exists() {
-        let content = fs::read_to_string(&path).unwrap_or_default();
-        let lower = content.to_lowercase();
-        if lower.contains("dependency") || lower.contains("module") {
-            Status::Pass
-        } else {
-            Status::Partial
+    if !path.exists() {
+        return Assessment {
+            category: "Repository Knowledge",
+            requirement: "ARCHITECTURE.md with domain layering and module boundaries",
+            level: 1,
+            obligation: Obligation::Should,
+            status: Status::Fail,
+            detail: "ARCHITECTURE.md not found.".into(),
+        };
+    }
+
+    let content = match fs::read_to_string(&path) {
+        Ok(c) => c,
+        Err(e) => {
+            return Assessment {
+                category: "Repository Knowledge",
+                requirement: "ARCHITECTURE.md with domain layering and module boundaries",
+                level: 1,
+                obligation: Obligation::Should,
+                status: Status::Partial,
+                detail: format!("ARCHITECTURE.md exists but could not be read: {e}"),
+            };
         }
-    } else {
-        Status::Fail
     };
+
+    let lower = content.to_lowercase();
+    let has_structure = lower.contains("dependency") || lower.contains("module");
 
     Assessment {
         category: "Repository Knowledge",
         requirement: "ARCHITECTURE.md with domain layering and module boundaries",
         level: 1,
         obligation: Obligation::Should,
-        status,
-        detail: match status {
-            Status::Pass => "ARCHITECTURE.md exists with dependency/module information.".into(),
-            Status::Partial => {
-                "ARCHITECTURE.md exists but lacks dependency direction or module structure.".into()
-            }
-            Status::Fail => "ARCHITECTURE.md not found.".into(),
+        status: if has_structure {
+            Status::Pass
+        } else {
+            Status::Partial
+        },
+        detail: if has_structure {
+            "ARCHITECTURE.md exists with dependency/module information.".into()
+        } else {
+            "ARCHITECTURE.md exists but lacks dependency direction or module structure.".into()
         },
     }
 }
@@ -506,10 +496,14 @@ fn check_quality_criteria(root: &Path) -> Assessment {
 
 fn check_entropy_management(root: &Path) -> Assessment {
     let config_path = root.join(".agents/harn/config.toml");
-    let has_gc_config = config_path.exists()
-        && fs::read_to_string(&config_path)
-            .map(|c| c.contains("[gc]"))
-            .unwrap_or(false);
+    let has_gc_config = if config_path.exists() {
+        match fs::read_to_string(&config_path) {
+            Ok(c) => c.contains("[gc]"),
+            Err(_) => false,
+        }
+    } else {
+        false
+    };
     let has_debt_tracker = root.join("docs/exec-plans/tech-debt-tracker.md").exists();
 
     let status = if has_gc_config {
@@ -536,10 +530,14 @@ fn check_entropy_management(root: &Path) -> Assessment {
 
 fn check_doc_code_mappings(root: &Path) -> Assessment {
     let config_path = root.join(".agents/harn/config.toml");
-    let has_mappings = config_path.exists()
-        && fs::read_to_string(&config_path)
-            .map(|c| c.contains("[[gc.mappings]]"))
-            .unwrap_or(false);
+    let has_mappings = if config_path.exists() {
+        match fs::read_to_string(&config_path) {
+            Ok(c) => c.contains("[[gc.mappings]]"),
+            Err(_) => false,
+        }
+    } else {
+        false
+    };
 
     Assessment {
         category: "Knowledge Hygiene",
@@ -557,166 +555,4 @@ fn check_doc_code_mappings(root: &Path) -> Assessment {
             "No [[gc.mappings]] in config. Add mappings to detect doc drift.".into()
         },
     }
-}
-
-fn print_report(root: &Path, assessments: &[Assessment]) {
-    let project_name = root
-        .file_name()
-        .map(|n| n.to_string_lossy().to_string())
-        .unwrap_or_else(|| "project".to_string());
-
-    println!();
-    println!(
-        "{}",
-        style(format!("Harness Maturity Assessment: {project_name}")).bold()
-    );
-    println!();
-
-    // Calculate scores per level
-    let l1: Vec<&Assessment> = assessments.iter().filter(|a| a.level == 1).collect();
-    let l2: Vec<&Assessment> = assessments.iter().filter(|a| a.level == 2).collect();
-
-    let l1_score = level_score(&l1);
-    let l2_score = level_score(&l2);
-
-    let overall_level = if l1_score >= 70 && l2_score >= 50 {
-        2
-    } else if l1_score >= 50 {
-        1
-    } else {
-        0
-    };
-
-    println!(
-        "Overall: {} (Level 1: {}%, Level 2: {}%)",
-        style(format!("Level {overall_level}")).bold().cyan(),
-        l1_score,
-        l2_score
-    );
-    println!();
-
-    // Print Level 1
-    println!(
-        "{} ({}%)",
-        style("Level 1 — Single Agent + Loop").bold().underlined(),
-        l1_score
-    );
-    println!();
-    print_level_assessments(&l1);
-
-    // Print Level 2
-    println!();
-    println!(
-        "{} ({}%)",
-        style("Level 2 — Multi-Agent + Planning")
-            .bold()
-            .underlined(),
-        l2_score
-    );
-    println!();
-    print_level_assessments(&l2);
-
-    // Summary
-    println!();
-    let fails: Vec<&Assessment> = assessments
-        .iter()
-        .filter(|a| a.status == Status::Fail && matches!(a.obligation, Obligation::Must))
-        .collect();
-
-    if fails.is_empty() {
-        println!(
-            "{}",
-            style("All MUST requirements met. Focus on SHOULD items to strengthen the harness.")
-                .green()
-        );
-    } else {
-        println!(
-            "{}",
-            style(format!(
-                "{} MUST requirement{} not met. Address these first:",
-                fails.len(),
-                if fails.len() == 1 { "" } else { "s" }
-            ))
-            .yellow()
-        );
-        for a in &fails {
-            println!("  • {}: {}", a.category, a.detail);
-        }
-    }
-}
-
-fn print_level_assessments(assessments: &[&Assessment]) {
-    let mut current_category = "";
-    for a in assessments {
-        if a.category != current_category {
-            current_category = a.category;
-        }
-        let icon = match a.status {
-            Status::Pass => style("✓").green(),
-            Status::Partial => style("◐").yellow(),
-            Status::Fail => style("✗").red(),
-        };
-        let obligation = match a.obligation {
-            Obligation::Must => style("MUST").red().bold(),
-            Obligation::Should => style("SHOULD").yellow(),
-        };
-        println!("  {icon} [{obligation}] {}: {}", a.category, a.requirement);
-        if a.status != Status::Pass {
-            println!("         {}", style(&a.detail).dim());
-        }
-    }
-}
-
-fn level_score(assessments: &[&Assessment]) -> u32 {
-    if assessments.is_empty() {
-        return 0;
-    }
-    let total_weight: f64 = assessments
-        .iter()
-        .map(|a| match a.obligation {
-            Obligation::Must => 2.0,
-            Obligation::Should => 1.0,
-        })
-        .sum();
-
-    let earned: f64 = assessments
-        .iter()
-        .map(|a| {
-            let weight = match a.obligation {
-                Obligation::Must => 2.0,
-                Obligation::Should => 1.0,
-            };
-            match a.status {
-                Status::Pass => weight,
-                Status::Partial => weight * 0.5,
-                Status::Fail => 0.0,
-            }
-        })
-        .sum();
-
-    ((earned / total_weight) * 100.0) as u32
-}
-
-fn print_json(assessments: &[Assessment]) -> Result<()> {
-    let json_items: Vec<serde_json::Value> = assessments
-        .iter()
-        .map(|a| {
-            serde_json::json!({
-                "category": a.category,
-                "requirement": a.requirement,
-                "level": a.level,
-                "obligation": format!("{:?}", a.obligation).to_lowercase(),
-                "status": match a.status {
-                    Status::Pass => "pass",
-                    Status::Partial => "partial",
-                    Status::Fail => "fail",
-                },
-                "detail": a.detail,
-            })
-        })
-        .collect();
-
-    let output = serde_json::to_string_pretty(&json_items).unwrap_or_else(|_| "[]".to_string());
-    println!("{output}");
-    Ok(())
 }

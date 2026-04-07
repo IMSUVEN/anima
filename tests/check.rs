@@ -56,6 +56,29 @@ fn check_fix_recreates_missing_dirs() {
 }
 
 #[test]
+fn check_fix_reports_missing_files_as_errors() {
+    let project = TempProject::with_git();
+    init_project(&project);
+
+    // Remove a required file
+    std::fs::remove_file(project.path().join("AGENTS.md")).unwrap();
+
+    // --fix should still report the missing file as an error (it only fixes dirs)
+    let output = project.run_harn(&["check", "--fix"]);
+    let code = output.status.code().unwrap_or(-1);
+    assert_eq!(
+        code, 2,
+        "check --fix should exit 2 when required files are missing, got {code}"
+    );
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("AGENTS.md") && stdout.contains("does not exist"),
+        "check --fix should report missing required files, got: {stdout}"
+    );
+}
+
+#[test]
 fn check_ci_exit_code_1_on_warnings() {
     let project = TempProject::with_git();
     init_project(&project);
@@ -99,6 +122,27 @@ fn check_without_init_fails() {
     assert!(
         stderr.contains("harn init") || stderr.contains("config"),
         "Error should guide user to run harn init, got: {stderr}"
+    );
+}
+
+#[test]
+fn check_handles_fragment_links() {
+    let project = TempProject::with_git();
+    init_project(&project);
+
+    // Add a link with a #fragment to AGENTS.md — should not be flagged as broken
+    let agents = project.read_file("AGENTS.md");
+    let modified = agents.replace(
+        "| Workflow templates |",
+        "| Fragment link | [ARCHITECTURE.md#section](ARCHITECTURE.md#section) |\n| Workflow templates |",
+    );
+    std::fs::write(project.path().join("AGENTS.md"), modified).unwrap();
+
+    let output = project.run_harn(&["check"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        !stdout.contains("does not exist"),
+        "Fragment links should not cause false failures, got: {stdout}"
     );
 }
 

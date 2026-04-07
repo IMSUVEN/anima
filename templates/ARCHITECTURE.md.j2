@@ -4,18 +4,60 @@
 
 <!-- TODO: Describe what this system does at a high level. 2-3 sentences. -->
 
-## Crate Structure
+## Project Structure
 
-<!-- TODO: Replace with your actual module/package tree.
-     Use a code block showing the directory structure with brief inline comments. -->
-
-```
+{% if stack == "rust" %}```
 project/
 ├── src/
 │   ├── main.rs          # Entry point
+│   ├── lib.rs           # Library root (if applicable)
 │   └── ...              # Your modules
-└── tests/
+├── tests/               # Integration tests
+└── Cargo.toml
 ```
+{% elif stack == "node" %}```
+project/
+├── src/
+│   ├── index.ts         # Entry point
+│   ├── domains/         # Business logic, one dir per domain
+│   ├── infrastructure/  # DB, HTTP, messaging adapters
+│   └── api/             # Route handlers (thin, delegate to domains)
+├── tests/               # Mirrors src/ structure
+├── package.json
+└── tsconfig.json
+```
+{% elif stack == "python" %}```
+project/
+├── src/
+│   └── project_name/
+│       ├── __init__.py
+│       ├── main.py      # Entry point
+│       ├── domains/     # Business logic
+│       └── adapters/    # External service adapters
+├── tests/
+├── pyproject.toml
+└── setup.cfg
+```
+{% elif stack == "go" %}```
+project/
+├── cmd/
+│   └── server/
+│       └── main.go      # Entry point
+├── internal/
+│   ├── domain/          # Business logic
+│   ├── handler/         # HTTP/gRPC handlers
+│   └── repository/      # Data access
+├── pkg/                 # Public library code
+└── go.mod
+```
+{% else %}```
+project/
+├── src/                 # Source code
+├── tests/               # Tests
+├── docs/                # Documentation
+└── ...                  # Build configuration
+```
+{% endif %}
 
 ## Module Dependency Rules
 
@@ -51,6 +93,17 @@ entry_point
 
 ## Cross-Cutting Concerns
 
-- **Error handling**: <!-- TODO: your error strategy -->
-- **Logging**: <!-- TODO: structured logging approach -->
-- **Configuration**: <!-- TODO: centralized vs per-domain -->
+### Error Handling
+
+<!-- TODO: Document your error handling strategy.
+     Examples: Result types, error propagation, user-facing error messages. -->
+
+### Logging
+
+<!-- TODO: Document your logging/observability approach.
+     Examples: log levels, structured logging, trace contexts. -->
+
+### Configuration
+
+<!-- TODO: Document how configuration is managed.
+     Examples: config file format, environment variables, defaults. -->

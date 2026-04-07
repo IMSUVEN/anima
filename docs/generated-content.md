@@ -13,7 +13,7 @@ Template variables are shown as `{{variable}}`.
 | File | Why it must exist from day one |
 |------|-------------------------------|
 | `AGENTS.md` | Agent entry point. The map, workflow, and constraints. |
-| `CLAUDE.md` | Claude Code entry point. Thin wrapper referencing AGENTS.md. |
+| `CLAUDE.md`* | Claude Code entry point. Thin wrapper referencing AGENTS.md. |
 | `ARCHITECTURE.md` | Structural truth. Agents need this to understand where code belongs. |
 | `docs/design-docs/index.md` | Registry with at least one entry (core-beliefs). |
 | `docs/design-docs/core-beliefs.md` | Golden principles. Substantive from day one. |
@@ -31,6 +31,7 @@ Template variables are shown as `{{variable}}`.
 | `docs/exec-plans/completed/` | `harn plan complete`, `harn sprint done` |
 | `docs/product-specs/` | User or agent creates specs as needed |
 | `docs/references/` | User adds external doc references as needed |
+| `docs/templates/` | Populated by init with workflow templates (exec-plan, sprint-contract, handoff) |
 
 ### Created on demand (by harn commands or user)
 
@@ -48,7 +49,7 @@ Template variables are shown as `{{variable}}`.
 
 ### AGENTS.md
 
-**Purpose**: Universal agent entry point. The map, the workflow, and the constraints — all in ~120 lines. Every agent tool reads this first.
+**Purpose**: Universal agent entry point. The map, the workflow, and the constraints — all in ~80 lines. Every agent tool reads this first.
 
 **Audience**: All agents (Codex primary), humans.
 
@@ -64,10 +65,11 @@ Template variables are shown as `{{variable}}`.
 The template renders stack-specific Quick Start commands, constraints, and a split Documentation Map. See the full template in `templates/AGENTS.md.j2`. Key sections:
 
 - **Quick Start**: Stack-conditional code block (Rust: `cargo build/test/clippy/fmt`; Node: `npm install/test/lint`; Python: `pip/pytest/ruff`; Go: `go build/test/vet`; Generic: TODO placeholder).
+- **Architecture**: Pointer to ARCHITECTURE.md for crate structure and dependency rules.
 - **Workflow**: 5 steps (Orient → Quality bar → Architecture → Validate → Record decisions).
 - **Key Constraints**: Type safety, no silent failures, dependency direction, test speed, stop on ambiguity.
-- **Documentation Map**: Split into "Implementation docs" (3 rows: architecture, core beliefs, criteria) and "Reference & workflow" (4 rows: design decisions, plans, completed plans, templates).
-- **Tooling**: harn command reference table (7 commands).
+- **Documentation Map**: Split into "Implementation docs" and "Reference & workflow".
+- **Tooling**: harn command reference table (8 commands).
 
 ---
 
@@ -108,8 +110,8 @@ All project context — architecture, workflow, constraints, evaluation criteria
 The template renders these sections. See the full template in `templates/ARCHITECTURE.md.j2`:
 
 - **System Overview**: TODO placeholder for 2-3 sentence high-level description.
-- **Crate Structure**: TODO placeholder for the actual module/package tree in a code block.
-- **Module Dependency Rules**: "Dependencies flow downward only" invariant, TODO placeholder for actual dependency graph, stack-specific enforcement hints (Rust: `cargo clippy`; Node: ESLint import rules; Python: import linting; Go: `go vet`).
+- **Project Structure**: Stack-specific example tree in a fenced code block (Rust: `src/`, `tests/`, `Cargo.toml`; Node: `src/`, `package.json`; Python: project package, `tests/`; Go: `cmd/`, `internal/`; Generic: basic layout).
+- **Module Dependency Rules**: "Dependencies flow downward only" invariant, example dependency graph in a code block, stack-specific enforcement hints (Rust: `cargo clippy`; Node: ESLint import rules; Python: import linting; Go: `go vet`).
 - **Common Mistakes**: 3 TODO items prompting the user to document the most common dependency direction violation, misplaced responsibility, and type safety violation.
 - **Cross-Cutting Concerns**: TODO placeholders for error handling, logging, and configuration strategies.
 
@@ -508,7 +510,7 @@ Last updated: {{date}}
 
 Grade each domain on the [evaluation criteria](evaluation/criteria.md). Update scores when significant changes land.
 
-| Domain | Functionality | Product Depth | Code Quality | Design/UX | Overall | Last Assessed |
+| Domain | Functionality | Product Depth | Code Quality | API Ergonomics | Overall | Last Assessed |
 |--------|:---:|:---:|:---:|:---:|:---:|:---:|
 | {{domain}} | {{grade}} | {{grade}} | {{grade}} | {{grade}} | {{grade}} | {{date}} |
 
@@ -544,19 +546,19 @@ Grade each domain on the [evaluation criteria](evaluation/criteria.md). Update s
 
 | Category | Files | Dirs |
 |----------|-------|------|
-| Root entry points | 3 (AGENTS.md, CLAUDE.md, ARCHITECTURE.md) | 0 |
+| Root entry points | 2–3 (AGENTS.md, ARCHITECTURE.md, CLAUDE.md if Claude Code selected) | 0 |
 | Config | 1 (.agents/harn/config.toml) | 2 |
 | Design docs | 2 (index.md, core-beliefs.md) | 1 |
 | Evaluation | 1 (criteria.md) | 1 |
 | Templates | 3 (exec-plan.md, sprint-contract.md, handoff.md) | 1 |
 | Empty dirs | 0 | 4 (exec-plans/active/, completed/, product-specs/, references/) |
-| **Total** | **10 files** | **9 directories** |
+| **Total** | **9–10 files** | **9 directories** |
 
-Tool-specific entry files (AGENTS.md, CLAUDE.md) are only generated for selected tools.
+*`CLAUDE.md` is only generated when Claude Code is selected. `AGENTS.md` is always generated regardless of tool selection.
 
 ### Key Change from Previous Design
 
 Previous: 15 files generated, many with empty TODO tables.
-Current: 10 files generated, every one with substantive content. Remaining files created on demand when content exists.
+Current: 9–10 files generated (depending on tool selection), every one with substantive content. Remaining files created on demand when content exists. Use `--minimal` to generate only the 4 essential files (AGENTS.md, ARCHITECTURE.md, docs/evaluation/criteria.md, and config.toml).
 
 Principle: **if an agent reads it, it should learn something.**

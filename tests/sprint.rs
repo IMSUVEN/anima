@@ -119,6 +119,35 @@ fn sprint_done_archives_contract() {
 }
 
 #[test]
+fn sprint_done_fails_when_contract_missing() {
+    let project = TempProject::with_git();
+    init_project(&project);
+
+    project.run_harn(&["sprint", "new", "test task"]);
+
+    // Delete the contract file but leave state
+    let active_dir = project.path().join("docs/exec-plans/active");
+    for entry in std::fs::read_dir(&active_dir).unwrap() {
+        let entry = entry.unwrap();
+        if entry.file_name().to_string_lossy().starts_with("sprint-") {
+            std::fs::remove_file(entry.path()).unwrap();
+        }
+    }
+
+    let output = project.run_harn(&["sprint", "done"]);
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("not found") || stderr.contains("contract"),
+        "Should report missing contract, got: {stderr}"
+    );
+
+    // State should still exist (not cleared)
+    assert!(project.file_exists(".agents/harn/current-sprint.toml"));
+}
+
+#[test]
 fn sprint_done_when_no_active_fails() {
     let project = TempProject::with_git();
     init_project(&project);

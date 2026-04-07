@@ -32,6 +32,7 @@ Setting this up manually for each project is tedious and inconsistent. `harn` au
 - Harness integrity validation (structural checks, freshness detection)
 - Quality score tracking
 - Stale documentation detection with git history analysis (`gc`)
+- Harness maturity assessment against HARNESS-SPEC levels (`assess`)
 
 ### Out of scope (now, with extensibility preserved)
 
@@ -116,7 +117,7 @@ ignore_paths = []
 
 The init flow has two tiers:
 1. **Auto-detected** — git, package manager, existing AI tool configs → no question asked.
-2. **Advanced options** — Available via `--interactive` or an "Advanced options?" prompt. Includes stack hint, custom stale threshold.
+2. **Interactive override** — `--interactive` forces tool selection prompts even when AI tools are auto-detected. Stack and stale threshold are set via `--stack` and config, not interactively.
 
 If all required information can be detected, `harn init` runs with zero prompts.
 
@@ -142,17 +143,20 @@ $ harn init
 
 Detecting project environment...
   ✓ Git repository
-  ✓ Cargo.toml → Rust project
+  ✓ rust project
   ✗ No AI tool configs detected
-
-AI coding tools [codex, claude-code]: ↵
 
 Creating harness structure...
   ✓ AGENTS.md
   ✓ CLAUDE.md
   ✓ ARCHITECTURE.md
+  ✓ docs/design-docs/index.md
+  ✓ docs/design-docs/core-beliefs.md
+  ✓ docs/evaluation/criteria.md
+  ✓ docs/templates/exec-plan.md
+  ✓ docs/templates/sprint-contract.md
+  ✓ docs/templates/handoff.md
   ✓ .agents/harn/config.toml
-  ✓ docs/ (6 files, 4 empty dirs)
 
 Done! Created 10 files.
 
@@ -182,6 +186,7 @@ Next steps:
 | `harn gc` | Detect stale docs via git history | 2 |
 | `harn score` | View/update quality grades | 3 |
 | `harn upgrade` | Update harness when harn version changes | 3 |
+| `harn assess` | Evaluate harness maturity against HARNESS-SPEC | 3 |
 
 See [commands.md](commands.md) for detailed command reference.
 

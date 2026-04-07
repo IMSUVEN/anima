@@ -25,7 +25,10 @@ harn/
 │   ├── score.rs         # Quality score display and interactive update
 │   ├── upgrade.rs       # Hash-based template upgrade with sidecar strategy
 │   ├── util.rs          # Shared utilities (sha256_hex, extract_md_links)
-│   └── assess.rs        # Harness maturity assessment (HARNESS-SPEC levels)
+│   ├── assess/
+│   │   ├── mod.rs       # Assessment entry point and orchestration
+│   │   ├── checks.rs    # Individual HARNESS-SPEC check implementations
+│   │   └── report.rs    # Report formatting (text and JSON)
 ├── templates/           # Embedded at compile time via include_dir!
 │   ├── AGENTS.md.j2
 │   ├── CLAUDE.md.j2
@@ -33,6 +36,7 @@ harn/
 │   └── docs/            # Mirrors the generated docs/ tree
 ├── tests/
 │   ├── helpers/mod.rs   # TempProject: temp dir + git init + harn binary runner
+│   ├── architecture.rs  # Structural tests for ARCHITECTURE.md dependency rules
 │   ├── init.rs          # Integration tests for harn init
 │   ├── check.rs         # Integration tests for harn check
 │   ├── plan.rs          # Integration tests for harn plan
@@ -55,16 +59,16 @@ main.rs
         ├── check.rs    → config, util
         ├── plan.rs     → types
         ├── sprint.rs   → types
-        ├── status.rs   → config, sprint
+        ├── status.rs   → config, types
         ├── gc.rs       → config, util
         ├── score.rs    → types
         ├── upgrade.rs  → config, init/render, util
-        └── assess.rs   → (standalone, no crate imports)
+        └── assess/     → (standalone, no crate imports)
 ```
 
-- `cli.rs` dispatches to command modules. Command modules depend on `config.rs` and domain-specific crates.
-- `config.rs` is a shared dependency for all commands. It owns the `Config` type and all config I/O.
-- `types.rs` defines the newtype vocabulary (`Slug`, `ProjectName`, `HarnDate`, `HarnPath`, `Stack`, `AiTool`). Used across all modules.
+- `cli.rs` dispatches to command modules. Command modules depend on `config.rs`, `types.rs`, and/or `util.rs` as needed.
+- `config.rs` is shared by commands that read `.agents/harn/config.toml` (`init`, `check`, `status`, `gc`, `upgrade`). Commands that operate on standalone files (`plan`, `sprint`, `score`, `assess`) do not use it.
+- `types.rs` defines the newtype vocabulary (`Slug`, `ProjectName`, `HarnDate`, `HarnPath`, `Stack`, `AiTool`) and shared data types (`SprintState`). Used by most modules except `assess/`, which is standalone.
 - `detect.rs` is used only by `init/`. No other module should call detection logic.
 - `util.rs` provides shared pure functions (`sha256_hex`, `extract_md_links`). It is a leaf dependency like `types.rs` — it must not import other crate modules.
 - `templates/` is a compile-time asset directory, not a runtime module. Accessed via `include_dir!` in `init/render.rs`.

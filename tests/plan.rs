@@ -176,6 +176,72 @@ fn plan_list_shows_milestone_progress() {
 }
 
 #[test]
+fn plan_complete_blocked_by_active_sprint() {
+    let project = TempProject::with_git();
+    init_project(&project);
+
+    project.run_harn(&["plan", "new", "feature with sprint"]);
+    project.run_harn(&[
+        "sprint",
+        "new",
+        "sprint for feature",
+        "--plan",
+        "feature-with-sprint",
+    ]);
+
+    let output = project.run_harn(&["plan", "complete", "feature-with-sprint"]);
+    assert!(
+        !output.status.success(),
+        "plan complete should fail when a linked sprint is active"
+    );
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("active linked sprint") || stderr.contains("sprint done"),
+        "Error should mention active sprint, got: {stderr}"
+    );
+}
+
+#[test]
+fn plan_list_shows_sprint_linkage() {
+    let project = TempProject::with_git();
+    init_project(&project);
+
+    project.run_harn(&["plan", "new", "plan with sprint"]);
+    project.run_harn(&[
+        "sprint",
+        "new",
+        "linked sprint",
+        "--plan",
+        "plan-with-sprint",
+    ]);
+
+    let output = project.run_harn(&["plan", "list"]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("sprint:") || stdout.contains("linked-sprint"),
+        "plan list should show linked sprint, got: {stdout}"
+    );
+}
+
+#[test]
+fn plan_list_shows_created_date() {
+    let project = TempProject::with_git();
+    init_project(&project);
+
+    project.run_harn(&["plan", "new", "dated plan"]);
+
+    let output = project.run_harn(&["plan", "list"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("created"),
+        "plan list should show created date, got: {stdout}"
+    );
+}
+
+#[test]
 fn plan_slug_sequential_fallback() {
     let project = TempProject::with_git();
     init_project(&project);

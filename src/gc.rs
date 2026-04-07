@@ -19,59 +19,91 @@ pub fn run(
     days_override: Option<u32>,
     report_only: bool,
     json: bool,
-) -> Result<()> {
+    ci: bool,
+) -> Result<u8> {
     let config = Config::load(project_root)?;
     let threshold_days = days_override.unwrap_or(config.gc.stale_threshold_days);
     let mut findings = Vec::new();
 
-    check_age(project_root, threshold_days, &mut findings);
+    check_age(
+        project_root,
+        threshold_days,
+        &config.gc.ignore_paths,
+        &mut findings,
+    );
     check_code_doc_divergence(project_root, &config, &mut findings);
     check_template_customization(project_root, &config, &mut findings);
     check_references(project_root, &mut findings);
+
+    let errors = findings.iter().filter(|f| f.severity == "error").count();
+    let warnings = findings.iter().filter(|f| f.severity == "warning").count();
 
     if json {
         let output = serde_json::to_string_pretty(&findings)
             .context("Failed to serialize gc findings to JSON")?;
         println!("{output}");
-        return Ok(());
-    }
-
-    println!();
-    println!("Scanning documentation freshness...");
-    println!();
-
-    if findings.is_empty() {
-        println!("  {} All documentation is current.", style("✓").green());
     } else {
-        for finding in &findings {
-            match finding.severity.as_str() {
-                "error" => println!("  {} {}", style("✗").red(), finding.message),
-                "warning" => println!("  {} {}", style("⚠").yellow(), finding.message),
-                _ => println!("  {} {}", style("ℹ").blue(), finding.message),
+        println!();
+        println!("Scanning documentation freshness...");
+        println!();
+
+        if findings.is_empty() {
+            println!("  {} All documentation is current.", style("✓").green());
+        } else {
+            for finding in &findings {
+                match finding.severity.as_str() {
+                    "error" => println!("  {} {}", style("✗").red(), finding.message),
+                    "warning" => println!("  {} {}", style("⚠").yellow(), finding.message),
+                    _ => println!("  {} {}", style("ℹ").blue(), finding.message),
+                }
+            }
+            println!();
+            let count = findings.len();
+            println!(
+                "Found {} potentially stale document{}.",
+                count,
+                if count == 1 { "" } else { "s" }
+            );
+            if !report_only {
+                println!("Consider reviewing with your AI coding tool, or updating manually.");
             }
         }
-        println!();
-        let count = findings.len();
-        println!(
-            "Found {} potentially stale document{}.",
-            count,
-            if count == 1 { "" } else { "s" }
-        );
-        if !report_only {
-            println!("Consider reviewing with your AI coding tool, or updating manually.");
-        }
     }
 
-    Ok(())
+    if ci {
+        if errors > 0 {
+            Ok(2)
+        } else if warnings > 0 {
+            Ok(1)
+        } else {
+            Ok(0)
+        }
+    } else if errors > 0 {
+        Ok(2)
+    } else {
+        Ok(0)
+    }
 }
 
-fn check_age(project_root: &Path, threshold_days: u32, findings: &mut Vec<GcFinding>) {
+fn check_age(
+    project_root: &Path,
+    threshold_days: u32,
+    ignore_paths: &[String],
+    findings: &mut Vec<GcFinding>,
+) {
     let repo = match git2::Repository::discover(project_root) {
         Ok(r) => r,
-        Err(_) => return,
+        Err(_) => {
+            findings.push(GcFinding {
+                path: String::new(),
+                severity: "info".to_string(),
+                message: "Git repository not available — skipping age analysis.".to_string(),
+            });
+            return;
+        }
     };
 
-    let doc_files = collect_doc_files(project_root);
+    let doc_files = collect_doc_files(project_root, ignore_paths);
     let now = chrono::Utc::now().timestamp();
 
     for rel_path in &doc_files {
@@ -91,7 +123,18 @@ fn check_age(project_root: &Path, threshold_days: u32, findings: &mut Vec<GcFind
 fn check_code_doc_divergence(project_root: &Path, config: &Config, findings: &mut Vec<GcFinding>) {
     let repo = match git2::Repository::discover(project_root) {
         Ok(r) => r,
-        Err(_) => return,
+        Err(_) => {
+            if !config.gc.mappings.is_empty() {
+                findings.push(GcFinding {
+                    path: String::new(),
+                    severity: "info".to_string(),
+                    message:
+                        "Git repository not available — skipping code-doc divergence analysis."
+                            .to_string(),
+                });
+            }
+            return;
+        }
     };
 
     for mapping in &config.gc.mappings {
@@ -127,13 +170,25 @@ fn check_template_customization(
 ) {
     for (file, original_hash) in &config.init.file_hashes {
         let full = project_root.join(file);
-        if let Ok(content) = fs::read_to_string(&full) {
-            let current = sha256_hex(&content);
-            if current == *original_hash {
+        if !full.exists() {
+            continue;
+        }
+        match fs::read_to_string(&full) {
+            Ok(content) => {
+                let current = sha256_hex(&content);
+                if current == *original_hash {
+                    findings.push(GcFinding {
+                        path: file.clone(),
+                        severity: "warning".to_string(),
+                        message: format!("{file} — still matches init template"),
+                    });
+                }
+            }
+            Err(e) => {
                 findings.push(GcFinding {
                     path: file.clone(),
                     severity: "warning".to_string(),
-                    message: format!("{file} — still matches init template"),
+                    message: format!("{file} — could not read for template check: {e}"),
                 });
             }
         }
@@ -148,12 +203,16 @@ fn check_references(project_root: &Path, findings: &mut Vec<GcFinding>) {
                 if link.starts_with("http://") || link.starts_with("https://") {
                     continue;
                 }
-                let target = project_root.join(&link);
+                let path_part = link.split('#').next().unwrap_or(&link);
+                if path_part.is_empty() {
+                    continue;
+                }
+                let target = project_root.join(path_part);
                 if !target.exists() {
                     findings.push(GcFinding {
                         path: "AGENTS.md".to_string(),
                         severity: "error".to_string(),
-                        message: format!("AGENTS.md references {link} which does not exist"),
+                        message: format!("AGENTS.md references {path_part} which does not exist"),
                     });
                 }
             }
@@ -161,10 +220,10 @@ fn check_references(project_root: &Path, findings: &mut Vec<GcFinding>) {
     }
 }
 
-fn collect_doc_files(root: &Path) -> Vec<String> {
+fn collect_doc_files(root: &Path, ignore_paths: &[String]) -> Vec<String> {
     let mut files = Vec::new();
     for entry in ["AGENTS.md", "ARCHITECTURE.md", "CLAUDE.md"] {
-        if root.join(entry).exists() {
+        if root.join(entry).exists() && !ignore_paths.contains(&entry.to_string()) {
             files.push(entry.to_string());
         }
     }
@@ -178,7 +237,10 @@ fn collect_doc_files(root: &Path) -> Vec<String> {
             })
         {
             if let Ok(rel) = entry.path().strip_prefix(root) {
-                files.push(rel.to_string_lossy().to_string());
+                let rel_str = rel.to_string_lossy().to_string();
+                if !ignore_paths.contains(&rel_str) {
+                    files.push(rel_str);
+                }
             }
         }
     }
@@ -224,11 +286,16 @@ fn count_commits_since(repo: &git2::Repository, paths: &[String], since: i64) ->
                     Ok(t) => t,
                     Err(_) => continue,
                 };
-                for path in paths {
-                    if tree.get_path(Path::new(path)).is_ok() {
-                        count += 1;
-                        break;
-                    }
+                let parent_tree = commit.parents().next().and_then(|p| p.tree().ok());
+                let changed = paths.iter().any(|path| {
+                    let cur = tree.get_path(Path::new(path)).ok().map(|e| e.id());
+                    let prev = parent_tree
+                        .as_ref()
+                        .and_then(|pt| pt.get_path(Path::new(path)).ok().map(|e| e.id()));
+                    cur != prev
+                });
+                if changed {
+                    count += 1;
                 }
             }
         }

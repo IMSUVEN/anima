@@ -27,6 +27,18 @@ fn imports_module(imports: &[String], module_name: &str) -> bool {
         .any(|line| line.contains(&format!("crate::{module_name}")))
 }
 
+/// Broader check: scan entire file (including function bodies) for `crate::module_name`
+/// references, skipping comments. Catches fully-qualified paths that bypass `use` statements.
+fn references_module_anywhere(file_path: &Path, module_name: &str) -> bool {
+    let content = fs::read_to_string(file_path)
+        .unwrap_or_else(|_| panic!("Could not read {}", file_path.display()));
+    let pattern = format!("crate::{module_name}");
+    content.lines().any(|line| {
+        let trimmed = line.trim();
+        !trimmed.starts_with("//") && !trimmed.starts_with("///") && trimmed.contains(&pattern)
+    })
+}
+
 fn src_path() -> std::path::PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("src")
 }
@@ -48,10 +60,9 @@ fn detect_is_only_used_by_init() {
     for module in &command_modules {
         let path = src.join(module);
         if path.exists() {
-            let imports = collect_crate_imports(&path);
             assert!(
-                !imports_module(&imports, "detect"),
-                "ARCHITECTURE VIOLATION: {module} imports from detect.rs, \
+                !references_module_anywhere(&path, "detect"),
+                "ARCHITECTURE VIOLATION: {module} references detect.rs, \
                  but detect.rs should only be used by init/. \
                  See ARCHITECTURE.md 'Module Dependency Rules'."
             );
@@ -95,7 +106,8 @@ fn no_command_module_imports_cli() {
 fn command_modules_do_not_cross_import() {
     let src = src_path();
 
-    // Each command module and what it is NOT allowed to import
+    // Each command module and what it is NOT allowed to reference.
+    // Uses references_module_anywhere to catch fully-qualified paths too.
     let forbidden: HashMap<&str, Vec<&str>> = HashMap::from([
         (
             "check.rs",
@@ -116,10 +128,10 @@ fn command_modules_do_not_cross_import() {
             "score.rs",
             vec!["plan", "sprint", "check", "gc", "upgrade", "status", "init"],
         ),
-        // status.rs is allowed to import sprint (for SprintState) per ARCHITECTURE.md
+        // status.rs depends on config + types only (SprintState moved to types)
         (
             "status.rs",
-            vec!["plan", "check", "gc", "score", "upgrade", "init"],
+            vec!["plan", "sprint", "check", "gc", "score", "upgrade", "init"],
         ),
         // upgrade.rs is allowed to import init/render per ARCHITECTURE.md
         (
@@ -131,11 +143,10 @@ fn command_modules_do_not_cross_import() {
     for (module, disallowed) in &forbidden {
         let path = src.join(module);
         if path.exists() {
-            let imports = collect_crate_imports(&path);
             for dep in disallowed {
                 assert!(
-                    !imports_module(&imports, dep),
-                    "ARCHITECTURE VIOLATION: {module} imports from {dep}. \
+                    !references_module_anywhere(&path, dep),
+                    "ARCHITECTURE VIOLATION: {module} references {dep}. \
                      Command modules should not cross-import each other \
                      (except explicitly allowed edges in ARCHITECTURE.md). \
                      See ARCHITECTURE.md 'Module Dependency Rules'."
@@ -162,6 +173,41 @@ fn config_does_not_import_command_modules() {
              config.rs is a shared leaf dependency — it must not import command modules. \
              See ARCHITECTURE.md 'Module Dependency Rules'."
         );
+    }
+}
+
+#[test]
+fn util_does_not_import_any_crate_module() {
+    let src = src_path();
+    let path = src.join("util.rs");
+    let imports = collect_crate_imports(&path);
+
+    let any_internal = imports.iter().any(|line| line.starts_with("use crate::"));
+    assert!(
+        !any_internal,
+        "ARCHITECTURE VIOLATION: util.rs imports from another crate module. \
+         util.rs is a leaf dependency like types.rs — it must not import other crate modules. \
+         See ARCHITECTURE.md 'Module Dependency Rules'."
+    );
+}
+
+#[test]
+fn assess_does_not_import_crate_modules() {
+    let src = src_path();
+    let assess_dir = src.join("assess");
+    let files = ["mod.rs", "checks.rs", "report.rs"];
+
+    for file in &files {
+        let path = assess_dir.join(file);
+        if path.exists() {
+            let imports = collect_crate_imports(&path);
+            let any_internal = imports.iter().any(|line| line.starts_with("use crate::"));
+            assert!(
+                !any_internal,
+                "ARCHITECTURE VIOLATION: assess/{file} imports from another crate module. \
+                 assess/ is standalone with no crate imports per ARCHITECTURE.md."
+            );
+        }
     }
 }
 

@@ -32,16 +32,20 @@ harn/
 │   ├── status.rs            # Project state aggregation
 │   ├── score.rs             # Quality score management
 │   ├── gc.rs                # Staleness detection (git2)
-│   └── upgrade.rs           # Hash-based template upgrade
+│   ├── upgrade.rs           # Hash-based template upgrade
+│   ├── util.rs              # Shared utilities (sha256_hex, extract_md_links)
+│   ├── assess/
+│   │   ├── mod.rs           # Assessment entry point and orchestration
+│   │   ├── checks.rs        # Individual HARNESS-SPEC check implementations
+│   │   └── report.rs        # Report formatting (text and JSON)
 ├── templates/               # Embedded template files
 │   ├── AGENTS.md.j2
 │   ├── CLAUDE.md.j2
 │   ├── ARCHITECTURE.md.j2
 │   └── docs/
-│       ├── design-docs/
-│       ├── evaluation/
-│       ├── exec-plans/
-│       └── templates/
+│       ├── design-docs/     # index.md.j2, core-beliefs.md.j2
+│       ├── evaluation/      # criteria.md.j2
+│       └── templates/       # exec-plan.md, sprint-contract.md, handoff.md
 ├── Cargo.toml
 └── README.md
 ```
@@ -55,14 +59,19 @@ User invokes `harn init`
   │     (git, package managers, existing AI tool configs)
   │
   ├─→ mod.rs: resolve what can't be detected
-  │     (AI tools, options via CLI args or interactive prompts)
+  │     (AI tools via CLI args; --interactive overrides detection;
+  │      fallback to interactive multiselect on TTY, or defaults)
   │
   ├─→ render.rs: populate templates with context
-  │     (project name, date, stack, selected tools)
+  │     (project name, description, date, stack, selected tools)
+  │     filter_by_tools: omit CLAUDE.md if claude-code not selected
+  │     filter_minimal: keep only essentials if --minimal
   │
-  ├─→ write files: skip existing, create missing
+  ├─→ init_directories: create docs/ tree (including docs/references/)
   │
-  └─→ config.rs: write .agents/harn/config.toml
+  ├─→ write files: skip existing, create missing; compute SHA-256 hashes
+  │
+  └─→ config.rs: write .agents/harn/config.toml (with file_hashes)
 ```
 
 ### 2.3 Config Path: `.agents/harn/`
@@ -172,7 +181,7 @@ Full filename format: `YYYY-MM-DD-<slug>.md`
 | Doc not modified in >N days | Info | Simple timestamp check (configurable, default 14 days) |
 | Related code changed since doc was last modified | Warning | Map docs to code paths; if code path has newer commits than doc, flag it |
 | Template never customized | Warning | Compare file content hash against the original template hash (stored in config at init time) |
-| Broken cross-references | Error | Links in AGENTS.md / docs/ point to non-existent files |
+| Broken cross-references | Error | Links in AGENTS.md point to non-existent files |
 
 #### Code-to-Doc Mapping
 
@@ -187,6 +196,7 @@ The mapping is configurable in `.agents/harn/config.toml`:
 ```toml
 [gc]
 stale_threshold_days = 14
+ignore_paths = ["docs/HARNESS-SPEC.md", "docs/HARNESS-GUIDE.md"]
 
 [[gc.mappings]]
 doc = "docs/product-specs/auth.md"
@@ -197,6 +207,8 @@ doc = "ARCHITECTURE.md"
 code = ["src/"]
 ```
 
+The `ignore_paths` field excludes files from gc analysis entirely (e.g., reference documents that are not expected to track code changes).
+
 For v1, the name-based heuristic plus manual mappings should be sufficient. ML-based or semantic mapping is out of scope.
 
 #### Template Hash Tracking
@@ -206,11 +218,95 @@ During `harn init`, store a hash of each generated file:
 ```toml
 # .agents/harn/config.toml
 [init.file_hashes]
-"AGENTS.md" = "a1b2c3d4"
-"docs/evaluation/criteria.md" = "e5f6g7h8"
+"AGENTS.md" = "a1b2c3d4e5f6..."    # full SHA-256 hex
+"docs/evaluation/criteria.md" = "f7g8h9..."
 ```
 
 `harn gc` compares current file hashes against these. If unchanged, the file was never customized — a warning worth flagging.
+
+#### GC Output
+
+Each finding is a `GcFinding { path, severity, message }`. Severities: `"info"`, `"warning"`, `"error"`.
+
+- Text output: each finding is printed with a severity icon (ℹ / ⚠ / ✗).
+- JSON output (`--json`): a pretty-printed JSON array of finding objects.
+- CI mode (`--ci`): exit code 1 if any warnings, exit code 2 if any errors.
+
+### 3.8 `harn assess` — Harness Maturity Assessment
+
+`assess` evaluates the project's harness maturity against HARNESS-SPEC levels. It is standalone — it does not depend on `config.rs` or `types.rs`.
+
+#### Module Structure
+
+```
+assess/
+├── mod.rs       # Entry point: run_assessments → print_report or print_json
+├── checks.rs    # 14 individual check functions, one per HARNESS-SPEC requirement
+└── report.rs    # Text and JSON report formatting
+```
+
+#### Data Types
+
+```rust
+struct Assessment {
+    category: &'static str,     // e.g. "Repository Knowledge"
+    requirement: &'static str,  // e.g. "AGENTS.md at repository root"
+    level: u8,                  // 1 or 2
+    obligation: Obligation,     // Must | Should
+    status: Status,             // Pass | Partial | Fail
+    detail: String,             // Human-readable explanation
+}
+```
+
+#### Scoring
+
+Each assessment has a weight: MUST = 2.0, SHOULD = 1.0. Pass = full weight, Partial = 50%, Fail = 0%. Scores are computed per level:
+
+- Overall Level 2 if `l1_score >= 70% && l2_score >= 50%`
+- Overall Level 1 if `l1_score >= 50%`
+- Overall Level 0 otherwise
+
+#### JSON Output
+
+```json
+{
+  "project": "my-project",
+  "level": 2,
+  "level1_pct": 94,
+  "level2_pct": 91,
+  "checks": [
+    {
+      "category": "Repository Knowledge",
+      "requirement": "AGENTS.md at repository root as agent entry point",
+      "level": 1,
+      "obligation": "must",
+      "status": "pass",
+      "detail": "AGENTS.md exists (61 lines)."
+    }
+  ]
+}
+```
+
+#### Checks (14 total)
+
+| Level | Spec Section | Check |
+|-------|-------------|-------|
+| 1 | §1.1 | AGENTS.md exists and is ≤150 lines |
+| 1 | §1.1 | ARCHITECTURE.md with dependency/module info |
+| 1 | §1.1 | Structured knowledge in `docs/` |
+| 1 | §1.2 | Language with build-time type checking |
+| 1 | §1.4 | CI pipeline configuration |
+| 1 | §1.4 | Linter configured |
+| 1 | §1.5 | Test suite infrastructure |
+| 1 | §1.6 | One-command dev setup |
+| 1 | §1.7 | No committed secrets |
+| 2 | §2.2 | Active or completed ExecPlans |
+| 2 | §2.3 | Sprint contract infrastructure |
+| 2 | §2.5 | Evaluation criteria and quality scores |
+| 1 | §4.1 | Entropy management (gc config) |
+| 2 | §4.2 | Doc-code mappings configured |
+
+`assess` always exits 0. It reports findings; it does not gate CI.
 
 ## 4. Dependencies
 
@@ -226,6 +322,8 @@ During `harn init`, store a hash of each generated file:
 | `walkdir` | Directory traversal for check | 1 |
 | `sha2` | File hash computation for gc template tracking | 2 |
 | `git2` | Git history analysis for gc | 2 |
+| `anyhow` | Application error handling with context chains | 1 |
+| `serde_json` | JSON output for gc and assess commands | 2 |
 
 ## 5. Phased Delivery
 
@@ -249,6 +347,7 @@ During `harn init`, store a hash of each generated file:
 
 - `harn score show|update` — quality score management
 - `harn upgrade` — update harness structure when harn version changes (with conflict handling for modified files)
+- `harn assess` — harness maturity assessment (HARNESS-SPEC levels)
 
 ### Phase 4: Extension (future, not committed)
 
@@ -282,7 +381,7 @@ Integration and e2e tests create a fresh temp directory, optionally run `git ini
 
 ### Speed Target
 
-**≤ 30 seconds** for the full suite. This is well under the 60-second AGENTS.md budget and leaves headroom as the test suite grows. Achieved via:
+**≤ 60 seconds** for the full suite, matching the AGENTS.md and HARNESS-SPEC budgets. Achieved via:
 
 - Parallel test execution (`cargo test` runs tests in parallel by default)
 - No network calls in any test
@@ -317,12 +416,12 @@ Unit tests live inline in `src/` modules via `#[cfg(test)] mod tests`.
 | `plan` | Creates file with correct slug and date; sequential fallback when no ASCII chars; `complete` blocks if linked sprint active |
 | `sprint` | Only one active at a time; `--plan` links correctly; `done` archives to completed/ and generates handoff |
 | `gc` | Flags stale docs; respects threshold config; detects uncustomized templates via hash comparison |
-| `config` | Roundtrip serialization; migration of old schemas; missing fields get defaults |
+| `upgrade` | Unchanged files overwritten; customized files get sidecar; new template paths created; `--dry-run` writes nothing |
+| `assess` | Assessed via e2e tests: on empty projects, on initialized projects; JSON output schema validation |
+| `config` | Roundtrip serialization; missing fields get defaults |
 | `slug` | ASCII extraction; consecutive hyphen collapse; explicit `--slug` override; sequential fallback |
 
-## 8. Upgrade Strategy (Preliminary)
-
-Implementation is Phase 3, but the approach is decided now so Phase 1 config design doesn't need to change later.
+## 8. Upgrade Strategy
 
 ### How `harn upgrade` works
 
@@ -330,24 +429,17 @@ When `harn` ships a new version with updated templates:
 
 1. **Compare** each harness file's current hash against the `init.file_hashes` stored in `config.toml`.
 2. **File unchanged** (hash matches original) → overwrite silently with the new template. The user never customized it, so there's nothing to lose.
-3. **File modified** (hash differs) → generate `<filename>.harn-upgrade` alongside the existing file. Print a diff summary so the user (or their AI tool) can merge.
-4. **New file** (exists in new template set but not in project) → create it. Report as added.
-5. **Removed file** (exists in project but no longer in template set) → leave untouched. Report as deprecated.
+3. **File modified** (hash differs) → generate `<filename>.harn-upgrade` alongside the existing file. The user (or their AI tool) can merge.
+4. **No hash record** → treated as customized — sidecar only, never overwrite.
+5. **New file** (exists in new template set but not in project) → create it. Report as added.
+
+After upgrade, `config.toml` is updated with the new `harn_version` and refreshed `file_hashes` for any files that were overwritten.
+
+**Escape hatch**: `harn upgrade --template-dir <path>` uses custom external templates instead of the built-in ones.
 
 ### Why not three-way merge
 
 Three-way merge requires storing the original template content (not just its hash), adds significant complexity, and is error-prone for markdown files where structural changes don't merge cleanly. The `.harn-upgrade` sidecar approach is simple, non-destructive, and delegates the merge decision to the user — who has an AI tool that excels at this.
-
-### Config migration
-
-`config.toml` schema changes are handled by `harn upgrade` directly:
-- Add new fields with sensible defaults.
-- Rename fields with a deprecation warning.
-- Never remove fields silently — warn and leave them.
-
-### Phase 1 implication
-
-The only Phase 1 requirement is that `init.file_hashes` is populated correctly during `harn init`. No upgrade logic needs to exist yet.
 
 ## 9. Error Handling
 
@@ -357,15 +449,15 @@ The only Phase 1 requirement is that `init.file_hashes` is populated correctly d
 |----------|---------|-----------|----------|
 | Config missing | No `config.toml` found | 3 | `harn init` or `harn init --force` |
 | Config invalid | Malformed TOML, missing required fields | 3 | Fix manually or `harn init --force` to regenerate |
-| State conflict | `harn sprint new` when sprint already active | 1 | `harn sprint done` first, or `--force` to replace |
+| State conflict | `harn sprint new` when sprint already active | 1 | `harn sprint done` first, or delete `current-sprint.toml` |
 | File conflict | `harn init` when files already exist | 0 (skip) | Use `--force` to overwrite |
 | Missing harness | `harn check`/`harn gc` in a non-harn project | 3 | `harn init` |
-| Git unavailable | `harn gc` in a non-git directory | 2 | Initialize git or skip git-dependent checks |
+| Git unavailable | `harn gc` without a usable git repository | 0 | Git-based analysis is skipped; info-level findings note the skip. Initialize git to enable age and code-doc divergence checks. |
 
 ### Error Message Principles
 
 1. **Say what happened.** "Sprint already active: implement-login-page"
-2. **Say what to do.** "Run `harn sprint done` to complete it first, or `harn sprint new --force` to replace."
+2. **Say what to do.** "Run `harn sprint done` to complete it first, or delete `.agents/harn/current-sprint.toml`."
 3. **Never fail silently.** Every error produces output. No exit code 0 on failure.
 
 ### Partial Failure in `harn init`
@@ -379,12 +471,11 @@ If `harn init` fails midway (e.g., permission error writing one file):
 
 `--fix` handles recoverable issues:
 - Recreates missing required directories.
-- Regenerates missing required files from template (only if no `init.file_hashes` entry exists for that file, indicating it was never customized).
 - Does NOT overwrite existing files.
 
 ## 10. Remaining Technical Questions
 
 | ID | Question | Notes |
 |----|----------|-------|
-| T1 | Should `harn upgrade` support `--dry-run`? | Likely yes, for consistency with `init`. Decide during Phase 3 implementation. |
+| T1 | ~~Should `harn upgrade` support `--dry-run`?~~ | Resolved: Yes, `--dry-run` is implemented. |
 | T2 | How should `harn check --fix` handle files that were customized then deleted? | The hash exists in config but the file is gone. Probably regenerate from template and warn. |

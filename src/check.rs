@@ -137,15 +137,29 @@ fn check_required_dirs(root: &Path, fix: bool, results: &mut Vec<CheckResult>) {
 fn check_content_substantive(root: &Path, config: &Config, results: &mut Vec<CheckResult>) {
     for file in &config.check.required_files {
         let full = root.join(file);
-        if let Ok(content) = fs::read_to_string(&full) {
-            let stripped = content
-                .lines()
-                .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
-                .count();
-            if stripped < 3 {
+        if !full.exists() {
+            continue; // handled by check_required_files
+        }
+        match fs::read_to_string(&full) {
+            Ok(content) => {
+                let stripped = content
+                    .lines()
+                    .filter(|l| !l.starts_with('#') && !l.trim().is_empty())
+                    .count();
+                if stripped < 3 {
+                    results.push(CheckResult {
+                        path: file.clone(),
+                        message: format!(
+                            "{file} has very little content (only headers/whitespace)."
+                        ),
+                        severity: Severity::Warning,
+                    });
+                }
+            }
+            Err(e) => {
                 results.push(CheckResult {
                     path: file.clone(),
-                    message: format!("{file} has very little content (only headers/whitespace)."),
+                    message: format!("Could not read {file}: {e}"),
                     severity: Severity::Warning,
                 });
             }
@@ -156,12 +170,24 @@ fn check_content_substantive(root: &Path, config: &Config, results: &mut Vec<Che
 fn check_template_customization(root: &Path, config: &Config, results: &mut Vec<CheckResult>) {
     for (file, original_hash) in &config.init.file_hashes {
         let full = root.join(file);
-        if let Ok(content) = fs::read_to_string(&full) {
-            let current_hash = sha256_hex(&content);
-            if current_hash == *original_hash {
+        if !full.exists() {
+            continue; // handled by check_required_files
+        }
+        match fs::read_to_string(&full) {
+            Ok(content) => {
+                let current_hash = sha256_hex(&content);
+                if current_hash == *original_hash {
+                    results.push(CheckResult {
+                        path: file.clone(),
+                        message: format!("{file} still matches init template (not customized)."),
+                        severity: Severity::Warning,
+                    });
+                }
+            }
+            Err(e) => {
                 results.push(CheckResult {
                     path: file.clone(),
-                    message: format!("{file} still matches init template (not customized)."),
+                    message: format!("Could not read {file} for template check: {e}"),
                     severity: Severity::Warning,
                 });
             }
@@ -171,21 +197,37 @@ fn check_template_customization(root: &Path, config: &Config, results: &mut Vec<
 
 fn check_cross_references(root: &Path, results: &mut Vec<CheckResult>) {
     let agents_path = root.join("AGENTS.md");
-    if let Ok(content) = fs::read_to_string(&agents_path) {
-        for line in content.lines() {
-            for link in extract_md_links(line) {
-                if link.starts_with("http://") || link.starts_with("https://") {
-                    continue;
-                }
-                let target = root.join(&link);
-                if !target.exists() {
-                    results.push(CheckResult {
-                        path: "AGENTS.md".to_string(),
-                        message: format!("AGENTS.md references {link} which does not exist."),
-                        severity: Severity::Error,
-                    });
+    match fs::read_to_string(&agents_path) {
+        Ok(content) => {
+            for line in content.lines() {
+                for link in extract_md_links(line) {
+                    if link.starts_with("http://") || link.starts_with("https://") {
+                        continue;
+                    }
+                    let path_part = link.split('#').next().unwrap_or(&link);
+                    if path_part.is_empty() {
+                        continue;
+                    }
+                    let target = root.join(path_part);
+                    if !target.exists() {
+                        results.push(CheckResult {
+                            path: "AGENTS.md".to_string(),
+                            message: format!(
+                                "AGENTS.md references {path_part} which does not exist."
+                            ),
+                            severity: Severity::Error,
+                        });
+                    }
                 }
             }
+        }
+        Err(_) if !agents_path.exists() => {} // handled by check_required_files
+        Err(e) => {
+            results.push(CheckResult {
+                path: "AGENTS.md".to_string(),
+                message: format!("Could not read AGENTS.md for cross-reference check: {e}"),
+                severity: Severity::Warning,
+            });
         }
     }
 }
@@ -194,15 +236,27 @@ const AGENTS_LINE_LIMIT: usize = 150;
 
 fn check_agents_length(root: &Path, results: &mut Vec<CheckResult>) {
     let path = root.join("AGENTS.md");
-    if let Ok(content) = fs::read_to_string(&path) {
-        let line_count = content.lines().count();
-        if line_count > AGENTS_LINE_LIMIT {
+    if !path.exists() {
+        return; // handled by check_required_files
+    }
+    match fs::read_to_string(&path) {
+        Ok(content) => {
+            let line_count = content.lines().count();
+            if line_count > AGENTS_LINE_LIMIT {
+                results.push(CheckResult {
+                    path: "AGENTS.md".to_string(),
+                    message: format!(
+                        "AGENTS.md is {line_count} lines (recommended ≤{AGENTS_LINE_LIMIT}). \
+                         Consider moving detailed content to linked documents."
+                    ),
+                    severity: Severity::Warning,
+                });
+            }
+        }
+        Err(e) => {
             results.push(CheckResult {
                 path: "AGENTS.md".to_string(),
-                message: format!(
-                    "AGENTS.md is {line_count} lines (recommended ≤{AGENTS_LINE_LIMIT}). \
-                     Consider moving detailed content to linked documents."
-                ),
+                message: format!("Could not read AGENTS.md: {e}"),
                 severity: Severity::Warning,
             });
         }
@@ -211,18 +265,30 @@ fn check_agents_length(root: &Path, results: &mut Vec<CheckResult>) {
 
 fn check_arch_dependency_direction(root: &Path, results: &mut Vec<CheckResult>) {
     let path = root.join("ARCHITECTURE.md");
-    if let Ok(content) = fs::read_to_string(&path) {
-        let lower = content.to_lowercase();
-        let has_direction = lower.contains("dependency")
-            || lower.contains("dependencies flow")
-            || lower.contains("downward only")
-            || lower.contains("one direction");
-        if !has_direction {
+    if !path.exists() {
+        return;
+    }
+    match fs::read_to_string(&path) {
+        Ok(content) => {
+            let lower = content.to_lowercase();
+            let has_direction = lower.contains("dependency")
+                || lower.contains("dependencies flow")
+                || lower.contains("downward only")
+                || lower.contains("one direction");
+            if !has_direction {
+                results.push(CheckResult {
+                    path: "ARCHITECTURE.md".to_string(),
+                    message: "ARCHITECTURE.md does not mention dependency direction. \
+                             Add a statement about which way dependencies flow."
+                        .to_string(),
+                    severity: Severity::Warning,
+                });
+            }
+        }
+        Err(e) => {
             results.push(CheckResult {
                 path: "ARCHITECTURE.md".to_string(),
-                message: "ARCHITECTURE.md does not mention dependency direction. \
-                         Add a statement about which way dependencies flow."
-                    .to_string(),
+                message: format!("Could not read ARCHITECTURE.md: {e}"),
                 severity: Severity::Warning,
             });
         }
