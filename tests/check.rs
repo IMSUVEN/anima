@@ -77,6 +77,32 @@ fn check_ci_exit_code_2_on_errors() {
 }
 
 #[test]
+fn check_error_gives_nonzero_exit_on_missing_file() {
+    let project = TempProject::with_git();
+    init_project(&project);
+
+    std::fs::remove_file(project.path().join("AGENTS.md")).unwrap();
+
+    let output = project.run_harn(&["check"]);
+    // Errors should produce exit code 2
+    assert_eq!(output.status.code(), Some(2));
+}
+
+#[test]
+fn check_without_init_fails() {
+    let project = TempProject::with_git();
+
+    let output = project.run_harn(&["check"]);
+    assert!(!output.status.success());
+
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("harn init") || stderr.contains("config"),
+        "Error should guide user to run harn init, got: {stderr}"
+    );
+}
+
+#[test]
 fn check_detects_broken_cross_references() {
     let project = TempProject::with_git();
     init_project(&project);

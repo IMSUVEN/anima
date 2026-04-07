@@ -100,18 +100,21 @@ pub fn complete_plan(project_root: &Path, name: &str) -> Result<()> {
     let source = active_dir.join(&plan_file);
     let dest = completed_dir.join(&plan_file);
 
-    // Check for active linked sprint
+    // Check for active linked sprint (parse TOML properly)
     let sprint_state_path = project_root.join(".agents/harn/current-sprint.toml");
     if sprint_state_path.exists() {
-        let sprint_content = fs::read_to_string(&sprint_state_path)?;
-        let plan_slug = extract_slug_from_filename(&plan_file);
-        if sprint_content.contains(&format!("plan = \"{plan_slug}\""))
-            || sprint_content.contains(&format!("plan = \"{}\"", name))
-        {
-            bail!(
-                "Plan \"{name}\" has an active linked sprint.\n\
-                 Run `harn sprint done` to complete the sprint first."
-            );
+        if let Ok(sprint_content) = fs::read_to_string(&sprint_state_path) {
+            if let Ok(sprint_state) = toml::from_str::<toml::Value>(&sprint_content) {
+                if let Some(plan_field) = sprint_state.get("plan").and_then(|v| v.as_str()) {
+                    let plan_slug = extract_slug_from_filename(&plan_file);
+                    if plan_field == plan_slug || plan_field == name {
+                        bail!(
+                            "Plan \"{name}\" has an active linked sprint.\n\
+                             Run `harn sprint done` to complete the sprint first."
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -216,27 +219,70 @@ fn extract_slug_from_filename(filename: &str) -> &str {
 fn count_milestones(project_root: &Path, dir: &str, filename: &str) -> String {
     let path = project_root.join(dir).join(filename);
     if let Ok(content) = fs::read_to_string(path) {
-        let total = content
+        let milestone_count = content
             .lines()
             .filter(|l| l.starts_with("### Milestone"))
             .count();
-        let checked = content
-            .lines()
-            .filter(|l| l.trim_start().starts_with("- [x]") || l.trim_start().starts_with("- [X]"))
-            .count();
-        let unchecked = content
-            .lines()
-            .filter(|l| l.trim_start().starts_with("- [ ]"))
-            .count();
 
-        if total > 0 {
-            format!("{checked}/{} milestones", total)
-        } else if checked + unchecked > 0 {
-            format!("{checked}/{} tasks", checked + unchecked)
+        let in_progress = count_progress_section(&content);
+        let checked = in_progress.0;
+        let total_tasks = in_progress.0 + in_progress.1;
+
+        if milestone_count > 0 && total_tasks > 0 {
+            format!("{milestone_count} milestones, {checked}/{total_tasks} tasks")
+        } else if milestone_count > 0 {
+            format!("{milestone_count} milestones")
+        } else if total_tasks > 0 {
+            format!("{checked}/{total_tasks} tasks")
         } else {
             "no milestones yet".to_string()
         }
     } else {
         "unreadable".to_string()
+    }
+}
+
+/// Count (checked, unchecked) checkboxes in the Progress section only.
+/// Falls back to whole-file counting when no Progress section exists.
+fn count_progress_section(content: &str) -> (usize, usize) {
+    let mut in_progress = false;
+    let mut checked = 0usize;
+    let mut unchecked = 0usize;
+    let mut found_section = false;
+
+    for line in content.lines() {
+        if line.starts_with("## Progress") {
+            in_progress = true;
+            found_section = true;
+            continue;
+        }
+        if in_progress && line.starts_with("## ") {
+            break;
+        }
+        if in_progress {
+            let t = line.trim_start();
+            if t.starts_with("- [x]") || t.starts_with("- [X]") {
+                checked += 1;
+            } else if t.starts_with("- [ ]") {
+                unchecked += 1;
+            }
+        }
+    }
+
+    if found_section {
+        (checked, unchecked)
+    } else {
+        let checked = content
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                t.starts_with("- [x]") || t.starts_with("- [X]")
+            })
+            .count();
+        let unchecked = content
+            .lines()
+            .filter(|l| l.trim_start().starts_with("- [ ]"))
+            .count();
+        (checked, unchecked)
     }
 }

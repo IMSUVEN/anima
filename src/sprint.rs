@@ -39,7 +39,12 @@ pub fn new_sprint(
 
     let active_dir = project_root.join(ACTIVE_DIR);
     if !active_dir.exists() {
-        fs::create_dir_all(&active_dir)?;
+        fs::create_dir_all(&active_dir).with_context(|| {
+            format!(
+                "Could not create directory: {}. Check filesystem permissions.",
+                active_dir.display()
+            )
+        })?;
     }
 
     let slug = resolve_slug(description, slug_override, &active_dir)?;
@@ -158,16 +163,26 @@ pub fn sprint_done(project_root: &Path) -> Result<()> {
     let state = load_sprint_state(project_root)?;
     let completed_dir = project_root.join(COMPLETED_DIR);
     if !completed_dir.exists() {
-        fs::create_dir_all(&completed_dir)?;
+        fs::create_dir_all(&completed_dir).with_context(|| {
+            format!(
+                "Could not create directory: {}. Check filesystem permissions.",
+                completed_dir.display()
+            )
+        })?;
     }
 
     // Move contract from active to completed
     let source = project_root.join(&state.contract_path);
     let filename = Path::new(&state.contract_path)
         .file_name()
-        .unwrap()
-        .to_string_lossy()
-        .to_string();
+        .map(|f| f.to_string_lossy().to_string())
+        .with_context(|| {
+            format!(
+                "Invalid contract path in sprint state: \"{}\"\n\
+                 Fix the path in {} or delete the file and run `harn sprint new`.",
+                state.contract_path, SPRINT_STATE
+            )
+        })?;
     let dest = completed_dir.join(&filename);
 
     if source.exists() {
@@ -220,7 +235,12 @@ fn generate_handoff(project_root: &Path, state: &SprintState) -> Result<()> {
         &format!("# Handoff: {} → Next Context", state.name),
     );
 
-    fs::write(&filepath, content)?;
+    fs::write(&filepath, &content).with_context(|| {
+        format!(
+            "Could not write handoff: {}. Check filesystem permissions.",
+            filepath.display()
+        )
+    })?;
 
     println!();
     println!("Created: {COMPLETED_DIR}/{filename}");
@@ -265,9 +285,20 @@ fn load_sprint_state(project_root: &Path) -> Result<SprintState> {
 fn save_sprint_state(project_root: &Path, state: &SprintState) -> Result<()> {
     let path = project_root.join(SPRINT_STATE);
     if let Some(parent) = path.parent() {
-        fs::create_dir_all(parent)?;
+        fs::create_dir_all(parent).with_context(|| {
+            format!(
+                "Could not create directory: {}. Check filesystem permissions.",
+                parent.display()
+            )
+        })?;
     }
-    let content = toml::to_string_pretty(state)?;
-    fs::write(&path, content)?;
+    let content =
+        toml::to_string_pretty(state).context("Failed to serialize sprint state to TOML")?;
+    fs::write(&path, content).with_context(|| {
+        format!(
+            "Could not write sprint state: {}. Check filesystem permissions.",
+            path.display()
+        )
+    })?;
     Ok(())
 }

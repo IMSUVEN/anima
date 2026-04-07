@@ -117,6 +117,13 @@ pub enum Command {
         #[arg(long)]
         dry_run: bool,
     },
+
+    /// Assess harness maturity against HARNESS-SPEC levels
+    Assess {
+        /// Output in JSON format
+        #[arg(long)]
+        json: bool,
+    },
 }
 
 #[derive(Debug, Subcommand)]
@@ -173,7 +180,7 @@ pub enum ScoreAction {
     Update,
 }
 
-pub fn dispatch(cli: Cli) -> Result<()> {
+pub fn dispatch(cli: Cli) -> Result<u8> {
     let project_root = cli
         .project_dir
         .unwrap_or_else(|| std::env::current_dir().expect("Could not determine current directory"));
@@ -204,42 +211,61 @@ pub fn dispatch(cli: Cli) -> Result<()> {
                 template_dir,
                 interactive,
             };
-            crate::init::run(&project_root, opts, cli.verbose)
+            crate::init::run(&project_root, opts, &detection)?;
+            Ok(0)
         }
-        Command::Check { fix, ci } => {
-            let exit_code = crate::check::run(&project_root, fix, ci)?;
-            if exit_code != 0 {
-                std::process::exit(exit_code);
+        Command::Check { fix, ci } => crate::check::run(&project_root, fix, ci),
+        Command::Plan { action } => {
+            match action {
+                PlanAction::New { description, slug } => {
+                    crate::plan::new_plan(&project_root, &description, slug.as_deref())?;
+                }
+                PlanAction::List => crate::plan::list_plans(&project_root)?,
+                PlanAction::Complete { name } => {
+                    crate::plan::complete_plan(&project_root, &name)?;
+                }
             }
-            Ok(())
+            Ok(0)
         }
-        Command::Plan { action } => match action {
-            PlanAction::New { description, slug } => {
-                crate::plan::new_plan(&project_root, &description, slug.as_deref())
+        Command::Sprint { action } => {
+            match action {
+                SprintAction::New {
+                    description,
+                    slug,
+                    plan,
+                } => crate::sprint::new_sprint(
+                    &project_root,
+                    &description,
+                    slug.as_deref(),
+                    plan.as_deref(),
+                )?,
+                SprintAction::Status => crate::sprint::sprint_status(&project_root)?,
+                SprintAction::Done => crate::sprint::sprint_done(&project_root)?,
             }
-            PlanAction::List => crate::plan::list_plans(&project_root),
-            PlanAction::Complete { name } => crate::plan::complete_plan(&project_root, &name),
-        },
-        Command::Sprint { action } => match action {
-            SprintAction::New {
-                description,
-                slug,
-                plan,
-            } => crate::sprint::new_sprint(
-                &project_root,
-                &description,
-                slug.as_deref(),
-                plan.as_deref(),
-            ),
-            SprintAction::Status => crate::sprint::sprint_status(&project_root),
-            SprintAction::Done => crate::sprint::sprint_done(&project_root),
-        },
-        Command::Status => crate::status::run(&project_root),
-        Command::Gc { days, report, json } => crate::gc::run(&project_root, days, report, json),
-        Command::Score { action } => match action {
-            ScoreAction::Show => crate::score::show(&project_root),
-            ScoreAction::Update => crate::score::update(&project_root),
-        },
-        Command::Upgrade { dry_run } => crate::upgrade::run(&project_root, dry_run),
+            Ok(0)
+        }
+        Command::Status => {
+            crate::status::run(&project_root)?;
+            Ok(0)
+        }
+        Command::Gc { days, report, json } => {
+            crate::gc::run(&project_root, days, report, json)?;
+            Ok(0)
+        }
+        Command::Score { action } => {
+            match action {
+                ScoreAction::Show => crate::score::show(&project_root)?,
+                ScoreAction::Update => crate::score::update(&project_root)?,
+            }
+            Ok(0)
+        }
+        Command::Upgrade { dry_run } => {
+            crate::upgrade::run(&project_root, dry_run)?;
+            Ok(0)
+        }
+        Command::Assess { json } => {
+            crate::assess::run(&project_root, json)?;
+            Ok(0)
+        }
     }
 }

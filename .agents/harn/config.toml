@@ -33,7 +33,7 @@ ignore_paths = [
 
 [[gc.mappings]]
 doc = "docs/commands.md"
-code = ["src/cli.rs", "src/init/mod.rs", "src/plan.rs", "src/sprint.rs", "src/check.rs", "src/gc.rs", "src/score.rs", "src/upgrade.rs"]
+code = ["src/cli.rs", "src/init/mod.rs", "src/plan.rs", "src/sprint.rs", "src/check.rs", "src/gc.rs", "src/score.rs", "src/upgrade.rs", "src/status.rs", "src/assess.rs"]
 
 [[gc.mappings]]
 doc = "docs/generated-content.md"
@@ -45,4 +45,4 @@ code = ["src/config.rs", "src/init/mod.rs", "src/init/render.rs", "src/gc.rs", "
 
 [[gc.mappings]]
 doc = "ARCHITECTURE.md"
-code = ["src/main.rs", "src/cli.rs", "src/config.rs", "src/detect.rs", "src/init/mod.rs", "src/init/render.rs", "src/plan.rs", "src/sprint.rs", "src/check.rs", "src/gc.rs", "src/score.rs", "src/upgrade.rs", "src/status.rs", "src/types.rs"]
+code = ["src/main.rs", "src/cli.rs", "src/config.rs", "src/detect.rs", "src/init/mod.rs", "src/init/render.rs", "src/plan.rs", "src/sprint.rs", "src/check.rs", "src/gc.rs", "src/score.rs", "src/upgrade.rs", "src/status.rs", "src/types.rs", "src/util.rs", "src/assess.rs"]

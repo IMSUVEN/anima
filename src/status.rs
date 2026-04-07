@@ -25,13 +25,29 @@ pub fn run(project_root: &Path) -> Result<()> {
     // Sprint info
     let sprint_path = project_root.join(".agents/harn/current-sprint.toml");
     if sprint_path.exists() {
-        if let Ok(content) = fs::read_to_string(&sprint_path) {
-            if let Ok(state) = toml::from_str::<SprintState>(&content) {
-                let progress = sprint_progress(project_root, &state);
-                println!("Sprint: {} {}", style(&state.name).bold(), progress);
-                if let Some(ref plan) = state.plan {
-                    println!("  └─ plan: {plan}");
+        match fs::read_to_string(&sprint_path) {
+            Ok(content) => match toml::from_str::<SprintState>(&content) {
+                Ok(state) => {
+                    let progress = sprint_progress(project_root, &state);
+                    println!("Sprint: {} {}", style(&state.name).bold(), progress);
+                    if let Some(ref plan) = state.plan {
+                        println!("  └─ plan: {plan}");
+                    }
                 }
+                Err(_) => {
+                    println!(
+                        "Sprint: {} (invalid state file — run `harn sprint done` or fix {})",
+                        style("unreadable").red(),
+                        sprint_path.display()
+                    );
+                }
+            },
+            Err(_) => {
+                println!(
+                    "Sprint: {} (could not read {})",
+                    style("unreadable").red(),
+                    sprint_path.display()
+                );
             }
         }
     } else {

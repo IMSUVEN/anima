@@ -1,11 +1,11 @@
 use std::fs;
 use std::path::Path;
 
-use anyhow::Result;
+use anyhow::{Context, Result};
 use console::style;
-use sha2::{Digest, Sha256};
 
 use crate::config::Config;
+use crate::util::{extract_md_links, sha256_hex};
 
 #[derive(Debug, serde::Serialize)]
 pub struct GcFinding {
@@ -30,7 +30,8 @@ pub fn run(
     check_references(project_root, &mut findings);
 
     if json {
-        let output = serde_json::to_string_pretty(&findings).unwrap_or_else(|_| "[]".to_string());
+        let output = serde_json::to_string_pretty(&findings)
+            .context("Failed to serialize gc findings to JSON")?;
         println!("{output}");
         return Ok(());
     }
@@ -233,25 +234,4 @@ fn count_commits_since(repo: &git2::Repository, paths: &[String], since: i64) ->
         }
     }
     count
-}
-
-fn extract_md_links(line: &str) -> Vec<String> {
-    let mut links = Vec::new();
-    let mut rest = line;
-    while let Some(open) = rest.find("](") {
-        let after = &rest[open + 2..];
-        if let Some(close) = after.find(')') {
-            links.push(after[..close].to_string());
-            rest = &after[close + 1..];
-        } else {
-            break;
-        }
-    }
-    links
-}
-
-fn sha256_hex(content: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(content.as_bytes());
-    format!("{:x}", hasher.finalize())
 }

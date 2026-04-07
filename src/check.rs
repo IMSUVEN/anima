@@ -3,9 +3,9 @@ use std::path::Path;
 
 use anyhow::Result;
 use console::style;
-use sha2::{Digest, Sha256};
 
 use crate::config::Config;
+use crate::util::{extract_md_links, sha256_hex};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Severity {
@@ -40,7 +40,7 @@ impl CheckReport {
     }
 }
 
-pub fn run(project_root: &Path, fix: bool, ci: bool) -> Result<i32> {
+pub fn run(project_root: &Path, fix: bool, ci: bool) -> Result<u8> {
     let config = Config::load(project_root)?;
     let mut results = Vec::new();
 
@@ -190,22 +190,6 @@ fn check_cross_references(root: &Path, results: &mut Vec<CheckResult>) {
     }
 }
 
-/// Extract markdown link targets from a line: `[text](target)` → `target`.
-fn extract_md_links(line: &str) -> Vec<String> {
-    let mut links = Vec::new();
-    let mut rest = line;
-    while let Some(open) = rest.find("](") {
-        let after = &rest[open + 2..];
-        if let Some(close) = after.find(')') {
-            links.push(after[..close].to_string());
-            rest = &after[close + 1..];
-        } else {
-            break;
-        }
-    }
-    links
-}
-
 const AGENTS_LINE_LIMIT: usize = 150;
 
 fn check_agents_length(root: &Path, results: &mut Vec<CheckResult>) {
@@ -288,40 +272,5 @@ fn print_report(root: &Path, report: &CheckReport) {
                 println!("  {} {}", style("⚠").yellow(), result.message);
             }
         }
-    }
-}
-
-fn sha256_hex(content: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(content.as_bytes());
-    format!("{:x}", hasher.finalize())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn extract_md_links_basic() {
-        let links = extract_md_links("See [ARCHITECTURE.md](ARCHITECTURE.md) for details.");
-        assert_eq!(links, vec!["ARCHITECTURE.md"]);
-    }
-
-    #[test]
-    fn extract_md_links_multiple() {
-        let links = extract_md_links("| [A](a.md) | [B](docs/b.md) |");
-        assert_eq!(links, vec!["a.md", "docs/b.md"]);
-    }
-
-    #[test]
-    fn extract_md_links_none() {
-        let links = extract_md_links("No links here.");
-        assert!(links.is_empty());
-    }
-
-    #[test]
-    fn extract_md_links_url() {
-        let links = extract_md_links("[link](https://example.com)");
-        assert_eq!(links, vec!["https://example.com"]);
     }
 }

@@ -17,7 +17,8 @@ pub fn show(project_root: &Path) -> Result<()> {
         return Ok(());
     }
 
-    let content = fs::read_to_string(&path)?;
+    let content = fs::read_to_string(&path)
+        .with_context(|| format!("Could not read {SCORE_PATH}. Check file permissions."))?;
     println!();
     println!("{}", style("Quality Scores").bold());
     println!();

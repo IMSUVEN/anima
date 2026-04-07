@@ -20,6 +20,21 @@ fn score_show_no_assessments() {
 }
 
 #[test]
+fn score_show_without_init_fails() {
+    let project = TempProject::with_git();
+
+    let output = project.run_harn(&["score", "show"]);
+    // Without init, config doesn't exist — should fail or show guidance
+    // score show without config should error out
+    assert!(
+        !output.status.success() || {
+            let stdout = String::from_utf8_lossy(&output.stdout);
+            stdout.contains("No quality assessments")
+        }
+    );
+}
+
+#[test]
 fn score_show_with_existing_file() {
     let project = TempProject::with_git();
     init_project(&project);

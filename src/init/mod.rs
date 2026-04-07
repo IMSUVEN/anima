@@ -6,10 +6,9 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use console::style;
-use sha2::{Digest, Sha256};
 
 use crate::config::{CheckSection, Config, GcSection, InitSection, ProjectSection, ToolsSection};
-use crate::detect::{self, DetectionResult};
+use crate::detect::DetectionResult;
 use crate::types::{AiTool, HarnDate, ProjectName, Stack};
 use render::{RenderContext, RenderedFile};
 
@@ -26,14 +25,8 @@ pub struct InitOptions {
 }
 
 /// Run the full init pipeline: detect → resolve → render → write.
-pub fn run(project_root: &Path, opts: InitOptions, verbose: bool) -> Result<()> {
-    let detection = detect::detect(project_root);
-
-    if verbose {
-        print_detection(&detection);
-    } else {
-        print_detection_summary(&detection);
-    }
+pub fn run(project_root: &Path, opts: InitOptions, detection: &DetectionResult) -> Result<()> {
+    print_detection(detection);
 
     let date = HarnDate::today();
     let ctx = RenderContext {
@@ -266,32 +259,6 @@ fn print_detection(detection: &DetectionResult) {
     println!("Creating harness structure...");
 }
 
-fn print_detection_summary(detection: &DetectionResult) {
-    println!();
-    println!("Detecting project environment...");
-    if detection.has_git {
-        println!("  {} Git repository", style("✓").green());
-    } else {
-        println!("  {} No git repository", style("✗").red());
-    }
-    match detection.stack {
-        Some(stack) => println!("  {} {} project", style("✓").green(), stack),
-        None => println!(
-            "  {} No package manager detected (generic project)",
-            style("✗").red()
-        ),
-    }
-    if detection.ai_tools.is_empty() {
-        println!("  {} No AI tool configs detected", style("✗").red());
-    } else {
-        for tool in &detection.ai_tools {
-            println!("  {} {} already configured", style("✓").green(), tool);
-        }
-    }
-    println!();
-    println!("Creating harness structure...");
-}
-
 fn print_dry_run(files: &[RenderedFile]) {
     println!();
     println!("Dry run — would create:");
@@ -315,8 +282,4 @@ fn print_next_steps() {
     println!("  4. Run `harn check` to validate structural integrity");
 }
 
-pub fn sha256_hex(content: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(content.as_bytes());
-    format!("{:x}", hasher.finalize())
-}
+pub use crate::util::sha256_hex;

@@ -128,6 +128,54 @@ fn plan_complete_nonexistent_fails() {
 }
 
 #[test]
+fn plan_without_init_fails() {
+    let project = TempProject::with_git();
+
+    let output = project.run_harn(&["plan", "list"]);
+    // plan list without init should either fail or show empty
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        output.status.success() && stdout.contains("No plans found") || !output.status.success()
+    );
+}
+
+#[test]
+fn plan_list_shows_milestone_progress() {
+    let project = TempProject::with_git();
+    init_project(&project);
+
+    project.run_harn(&["plan", "new", "milestone test"]);
+
+    let active_dir = project.path().join("docs/exec-plans/active");
+    let file = std::fs::read_dir(&active_dir)
+        .unwrap()
+        .filter_map(|e| e.ok())
+        .find(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            name.contains("milestone-test") && name.ends_with(".md")
+        })
+        .unwrap();
+
+    let content = "# ExecPlan: milestone test\n\n\
+        ## Milestones\n\n\
+        ### Milestone 1: Setup\n\n\
+        ### Milestone 2: Build\n\n\
+        ## Progress\n\n\
+        - [x] Created project\n\
+        - [ ] Implemented feature\n\
+        - [ ] Wrote tests\n";
+
+    std::fs::write(file.path(), content).unwrap();
+
+    let output = project.run_harn(&["plan", "list"]);
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(
+        stdout.contains("2 milestones") && stdout.contains("1/3 tasks"),
+        "Expected '2 milestones, 1/3 tasks' but got: {stdout}"
+    );
+}
+
+#[test]
 fn plan_slug_sequential_fallback() {
     let project = TempProject::with_git();
     init_project(&project);

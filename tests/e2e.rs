@@ -142,6 +142,53 @@ fn upgrade_preserves_customizations() {
     assert!(project.file_exists("AGENTS.md.harn-upgrade"));
 }
 
+/// Assess command works on fresh and initialized projects
+#[test]
+fn assess_on_initialized_project() {
+    let project = TempProject::with_git();
+    project.run_harn(&["init", "--tools", "codex,claude-code", "--stack", "rust"]);
+
+    let output = project.run_harn(&["assess"]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Harness Maturity Assessment"));
+    assert!(stdout.contains("Level 1"));
+    assert!(stdout.contains("Level 2"));
+    assert!(stdout.contains("Repository Knowledge"));
+}
+
+#[test]
+fn assess_json_output() {
+    let project = TempProject::with_git();
+    project.run_harn(&["init", "--tools", "codex", "--stack", "rust"]);
+
+    let output = project.run_harn(&["assess", "--json"]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let parsed: serde_json::Value = serde_json::from_str(stdout.trim()).unwrap();
+    let arr = parsed.as_array().unwrap();
+    assert!(!arr.is_empty());
+
+    for item in arr {
+        assert!(item.get("category").is_some());
+        assert!(item.get("status").is_some());
+        assert!(item.get("level").is_some());
+    }
+}
+
+#[test]
+fn assess_on_empty_project() {
+    let project = TempProject::with_git();
+
+    let output = project.run_harn(&["assess"]);
+    assert!(output.status.success());
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    assert!(stdout.contains("Level 0") || stdout.contains("MUST"));
+}
+
 /// Multiple plans and sprints
 #[test]
 fn multiple_plans_and_sprints() {

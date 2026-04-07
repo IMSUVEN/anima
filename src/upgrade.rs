@@ -3,10 +3,10 @@ use std::path::Path;
 
 use anyhow::{Context, Result};
 use console::style;
-use sha2::{Digest, Sha256};
 
 use crate::config::Config;
 use crate::init::render::{self, RenderContext};
+use crate::util::sha256_hex;
 
 pub fn run(project_root: &Path, dry_run: bool) -> Result<()> {
     let mut config = Config::load(project_root)?;
@@ -46,9 +46,19 @@ pub fn run(project_root: &Path, dry_run: bool) -> Result<()> {
                 );
             } else {
                 if let Some(parent) = full_path.parent() {
-                    fs::create_dir_all(parent)?;
+                    fs::create_dir_all(parent).with_context(|| {
+                        format!(
+                            "Could not create directory: {}. Check filesystem permissions.",
+                            parent.display()
+                        )
+                    })?;
                 }
-                fs::write(&full_path, &file.content)?;
+                fs::write(&full_path, &file.content).with_context(|| {
+                    format!(
+                        "Could not write file: {}. Check filesystem permissions.",
+                        full_path.display()
+                    )
+                })?;
                 config
                     .init
                     .file_hashes
@@ -63,7 +73,12 @@ pub fn run(project_root: &Path, dry_run: bool) -> Result<()> {
             continue;
         }
 
-        let current_content = fs::read_to_string(&full_path)?;
+        let current_content = fs::read_to_string(&full_path).with_context(|| {
+            format!(
+                "Could not read file: {}. Check filesystem permissions.",
+                full_path.display()
+            )
+        })?;
         let current_hash = sha256_hex(&current_content);
 
         if let Some(original_hash) = config.init.file_hashes.get(&file.rel_path) {
@@ -84,7 +99,12 @@ pub fn run(project_root: &Path, dry_run: bool) -> Result<()> {
                         file.rel_path
                     );
                 } else {
-                    fs::write(&full_path, &file.content)?;
+                    fs::write(&full_path, &file.content).with_context(|| {
+                        format!(
+                            "Could not write file: {}. Check filesystem permissions.",
+                            full_path.display()
+                        )
+                    })?;
                     config
                         .init
                         .file_hashes
@@ -127,7 +147,9 @@ pub fn run(project_root: &Path, dry_run: bool) -> Result<()> {
                 );
             } else {
                 let sidecar = format!("{}.harn-upgrade", full_path.display());
-                fs::write(&sidecar, &file.content)?;
+                fs::write(&sidecar, &file.content).with_context(|| {
+                    format!("Could not write sidecar: {sidecar}. Check filesystem permissions.")
+                })?;
                 println!(
                     "  {} {} (no hash record — sidecar created)",
                     style("sidecar").yellow(),
@@ -160,10 +182,4 @@ pub fn run(project_root: &Path, dry_run: bool) -> Result<()> {
     }
 
     Ok(())
-}
-
-fn sha256_hex(content: &str) -> String {
-    let mut hasher = Sha256::new();
-    hasher.update(content.as_bytes());
-    format!("{:x}", hasher.finalize())
 }

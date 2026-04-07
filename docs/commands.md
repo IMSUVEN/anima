@@ -417,6 +417,82 @@ Consider reviewing with your AI coding tool, or updating manually.
 
 ---
 
+## `harn assess`
+
+Evaluate harness maturity against HARNESS-SPEC levels. Runs automated checks across Level 1 (Single Agent) and Level 2 (Multi-Agent) requirements, producing a maturity score and actionable report.
+
+### Usage
+
+```
+harn assess [OPTIONS]
+```
+
+### Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `--json` | Output in JSON format (for CI integration) | Off |
+
+### Checks
+
+14 checks across two maturity levels:
+
+| Level | Section | Check |
+|-------|---------|-------|
+| 1 | §1.1 Repository Knowledge | AGENTS.md at repository root |
+| 1 | §1.1 Repository Knowledge | ARCHITECTURE.md with module boundaries |
+| 1 | §1.1 Repository Knowledge | Structured knowledge in versioned docs/ |
+| 1 | §1.2 Codebase Legibility | Language with build-time type checking |
+| 1 | §1.4 Mechanical Enforcement | CI pipeline configuration |
+| 1 | §1.4 Mechanical Enforcement | Linter configured with enforced rules |
+| 1 | §1.5 Testing | Full test suite executable in ≤1 minute |
+| 1 | §1.6 Dev Environment | Dev environment spinnable in one command |
+| 1 | §1.7 Safety | No secrets committed to repository |
+| 2 | §2.2 Execution Plans | Self-contained ExecPlans for complex work |
+| 2 | §2.3 Sprint Contracts | Negotiated sprint contracts |
+| 2 | §2.5 Quality Criteria | Explicit grading criteria |
+| 2 | §4.1 Entropy Management | Active entropy detection and correction |
+| 2 | §4.2 Knowledge Hygiene | Documentation-to-code mappings |
+
+### Example
+
+```
+$ harn assess
+
+Harness Maturity Assessment: my-project
+
+Overall: Level 2 (Level 1: 94%, Level 2: 91%)
+
+Level 1 — Single Agent + Loop (94%)
+
+  ✓ [MUST] Repository Knowledge: AGENTS.md at repository root as agent entry point
+  ✓ [SHOULD] Repository Knowledge: ARCHITECTURE.md with domain layering and module boundaries
+  ✓ [MUST] Repository Knowledge: Structured knowledge in versioned docs/
+  ✓ [MUST] Codebase Legibility: Language with build-time type checking
+  ✓ [MUST] Mechanical Enforcement: CI pipeline enforcing lint/test on every change
+  ✓ [SHOULD] Mechanical Enforcement: Linter configured with enforced rules
+  ◐ [MUST] Testing: Full test suite executable in ≤1 minute
+         Test directory found. Run your test suite to verify it completes in ≤60s.
+  ✓ [MUST] Dev Environment: Dev environment spinnable in one command
+  ✓ [SHOULD] Safety: No secrets committed to repository
+  ✓ [MUST] Entropy Management: Active entropy detection and correction
+
+Level 2 — Multi-Agent + Planning (91%)
+
+  ✓ [MUST] Execution Plans: Self-contained ExecPlans for complex work
+  ◐ [SHOULD] Sprint Contracts: Negotiated sprint contracts with testable acceptance criteria
+         Sprint template exists but no sprint active. Use `harn sprint new`.
+  ✓ [MUST] Quality Criteria: Explicit grading criteria shared with generators and evaluators
+  ✓ [SHOULD] Knowledge Hygiene: Documentation-to-code mappings for drift detection
+
+All MUST requirements met. Focus on SHOULD items to strengthen the harness.
+
+$ harn assess --json
+{"project":"my-project","level":2,"level1_pct":94,"level2_pct":91,"checks":[...]}
+```
+
+---
+
 ## Exit Codes
 
 | Code | Meaning | Used by |
@@ -440,3 +516,4 @@ Consider reviewing with your AI coding tool, or updating manually.
 | `harn gc` | | ✓ | |
 | `harn score` | | | ✓ |
 | `harn upgrade` | | | ✓ |
+| `harn assess` | | | ✓ |
