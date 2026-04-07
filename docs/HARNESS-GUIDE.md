@@ -1,5 +1,7 @@
 # Harness Engineering Guide
 
+[English](HARNESS-GUIDE.md) | [中文](HARNESS-GUIDE.zh-CN.md)
+
 A companion to [HARNESS-SPEC.md](HARNESS-SPEC.md). The spec tells you **what** to do and **why** in one sentence. This guide teaches you **how to think** about harness design so you can handle situations the spec doesn't cover.
 
 Read the spec first. Come here when you need to understand the reasoning behind a rule, see it applied to a concrete situation, or make a judgment call at a decision point.

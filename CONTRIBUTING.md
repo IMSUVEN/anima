@@ -1,5 +1,7 @@
 # Contributing to harn
 
+[English](CONTRIBUTING.md) | [中文](CONTRIBUTING.zh-CN.md)
+
 Thank you for your interest in contributing to harn! This document covers the essentials for both human and AI-agent contributors.
 
 ## For AI Agents

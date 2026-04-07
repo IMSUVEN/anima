@@ -1,5 +1,7 @@
 # harn
 
+[English](README.md) | [中文](README.zh-CN.md)
+
 A CLI tool that gives projects the structure and workflows for effective AI-agent-driven development — based on harness engineering principles from [OpenAI](https://openai.com/index/harness-engineering/) and [Anthropic](https://www.anthropic.com/engineering/harness-design-long-running-apps).
 
 ## Problem
