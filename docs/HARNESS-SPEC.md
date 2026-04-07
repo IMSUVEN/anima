@@ -1,5 +1,7 @@
 # Harness Specification for Agentic Software Engineering
 
+[English](HARNESS-SPEC.md) | [中文](HARNESS-SPEC.zh-CN.md)
+
 ## 0. Preamble
 
 ### 0.1 What This Document Is
