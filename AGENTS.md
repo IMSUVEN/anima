@@ -4,9 +4,9 @@
 
 ## State
 
-**Phase: Germination.** The intellectual foundation is established. No implementation exists.
+**Phase: Rooting.** Seed design validated. First CLI command (`anima init`) implemented in Rust.
 
-anima plants growth-capable seeds into new projects — minimal structures from which a harness grows through practice, not templates that prescribe one. The guiding documents are written and stable. The Philosophy now includes the **spirit** concept (§6): the project's emergent identity as a living entity that evolves from dormancy (seed) through perception (awakening) to participation (presence). The concrete seed design is complete and lives in `seed/`. The next step is choosing a technology stack for anima itself and building the CLI tool that delivers the seed.
+anima plants growth-capable seeds into new projects — minimal structures from which a harness grows through practice, not templates that prescribe one. The `anima init` command is working: it plants three seed files with `{project-name}` replaced. The seed has been validated in two real projects (see `docs/decisions/006-seed-validation-results.md`). Next: `anima check` — a growth health assessment command that agents can call to evaluate knowledge sedimentation.
 
 ## Map
 
@@ -17,7 +17,9 @@ anima plants growth-capable seeds into new projects — minimal structures from 
 | [docs/HARNESS-GUIDE.md](docs/HARNESS-GUIDE.md) | Reasoning guide for harness design (discipline-level) |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | How the documents and seed relate to each other |
 | [docs/decisions/](docs/decisions/) | Recorded technical decisions (see README inside) |
-| [seed/](seed/) | The concrete seed that `anima init` will plant |
+| [seed/](seed/) | The concrete seed that `anima init` plants |
+| [src/main.rs](src/main.rs) | CLI implementation (Rust) |
+| [Cargo.toml](Cargo.toml) | Rust project manifest |
 
 Each document in `docs/` has a Chinese translation (`*.zh-CN.md`) alongside.
 

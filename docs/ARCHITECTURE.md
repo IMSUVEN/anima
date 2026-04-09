@@ -1,8 +1,8 @@
 # Architecture
 
-anima is currently a documentation-only project with no runtime code. Its
-"architecture" is the relationship between its documents and the seed it
-produces.
+anima is a Rust CLI tool that plants growth-capable seeds into projects. Its
+architecture is the relationship between its documents, the seed it produces,
+and the CLI that delivers it.
 
 ## Document Layers
 
@@ -30,10 +30,26 @@ are independent of anima.
   seed/ (concrete files anima init produces)
 ```
 
-The `seed/` directory contains the exact files that `anima init` will plant into
-a user's project. The only parameterized value is `{project-name}` in
+The `seed/` directory contains the exact files that `anima init` plants into a
+user's project. The only parameterized value is `{project-name}` in
 `seed/AGENTS.md`. The seed implements Philosophy §4 and addresses the memory
 paradox identified in §6.2 through its cultivation protocol.
+
+## The CLI
+
+```
+  seed/ (source of truth for seed content)
+       |
+       | embedded via include_str!
+       |
+  src/main.rs (CLI binary)
+```
+
+The CLI embeds seed files at compile time using `include_str!`. This means
+the binary is self-contained — no external files needed at runtime. The only
+runtime operation `anima init` performs is writing files and replacing
+`{project-name}` with the project name (inferred from directory or provided
+via `--name`).
 
 ## Translations
 
@@ -44,7 +60,7 @@ requires a corresponding change to the Chinese version in the same commit.
 
 ## What Does Not Exist Yet
 
-- **CLI tool**: No `anima init` command exists. The seed is designed but not
-  deliverable. Technology stack for anima-the-tool has not been chosen.
+- **`anima check`**: Growth health assessment command. Designed to be called
+  by agents to evaluate knowledge sedimentation. Not yet implemented.
 - **Spirit infrastructure**: No `.anima/` directory, no persistent service, no
   ecosystem signal processing. These belong to the awakening phase (§6.4).

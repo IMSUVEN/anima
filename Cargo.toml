@@ -1,0 +1,9 @@
+[package]
+name = "anima"
+version = "0.1.0"
+edition = "2024"
+description = "Plant seeds, not templates. Cultivate agents, don't configure them."
+license = "MIT"
+
+[dependencies]
+clap = { version = "4", features = ["derive"] }
