@@ -4,9 +4,9 @@
 
 ## State
 
-**Phase: Rooting.** Seed design validated. First CLI command (`anima init`) implemented in Rust.
+**Phase: Rooting.** Two CLI commands live: `anima init` (plant seed) and `anima check` (observe cultivation state).
 
-anima plants growth-capable seeds into new projects — minimal structures from which a harness grows through practice, not templates that prescribe one. The `anima init` command is working: it plants three seed files with `{project-name}` replaced. The seed has been validated in two real projects (see `docs/decisions/006-seed-validation-results.md`). Next: `anima check` — a growth health assessment command that agents can call to evaluate knowledge sedimentation.
+anima plants growth-capable seeds into new projects — minimal structures from which a harness grows through practice, not templates that prescribe one. `anima init` plants three seed files; `anima check` observes which areas have grown and which remain dormant. Both are implemented in Rust, distributed as a single binary via `cargo install`.
 
 ## Map
 

@@ -32,9 +32,14 @@ anima init
 
 # Or specify a project name
 anima init --name my-project
+
+# Observe the project's cultivation state
+anima check
 ```
 
-That's it. One command, then anima gets out of the way. The seed grows through your collaboration with your AI coding tool — Cursor, Codex, Claude Code, or whatever you use.
+`anima init` plants the seed. `anima check` observes how it's growing — which areas have developed and which remain dormant. Agents can run `check` at session start to sense what the project needs.
+
+Then anima gets out of the way. The seed grows through your collaboration with your AI coding tool — Cursor, Codex, Claude Code, or whatever you use.
 
 ## The Belief
 

@@ -46,10 +46,19 @@ paradox identified in §6.2 through its cultivation protocol.
 ```
 
 The CLI embeds seed files at compile time using `include_str!`. This means
-the binary is self-contained — no external files needed at runtime. The only
-runtime operation `anima init` performs is writing files and replacing
-`{project-name}` with the project name (inferred from directory or provided
-via `--name`).
+the binary is self-contained — no external files needed at runtime.
+
+Two commands exist:
+
+- **`anima init`**: Writes seed files and replaces `{project-name}` with the
+  project name (inferred from directory or provided via `--name`). Refuses to
+  overwrite an existing `AGENTS.md`.
+
+- **`anima check`**: Reads the project's harness files and reports their
+  cultivation state — which areas have grown and which remain dormant. This is
+  the spirit's first "sense": it observes four signals (state phase,
+  architecture documentation, decision records, conventions) and produces a
+  compact summary designed for agent consumption at session start.
 
 ## Translations
 
@@ -60,7 +69,5 @@ requires a corresponding change to the Chinese version in the same commit.
 
 ## What Does Not Exist Yet
 
-- **`anima check`**: Growth health assessment command. Designed to be called
-  by agents to evaluate knowledge sedimentation. Not yet implemented.
 - **Spirit infrastructure**: No `.anima/` directory, no persistent service, no
   ecosystem signal processing. These belong to the awakening phase (§6.4).

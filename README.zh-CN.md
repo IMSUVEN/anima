@@ -32,9 +32,14 @@ anima init
 
 # 或指定项目名
 anima init --name my-project
+
+# 观察项目的培育状态
+anima check
 ```
 
-就这样。一条命令，然后 anima 退场。种子通过你与 AI 编程工具的协作而生长——Cursor、Codex、Claude Code，或任何你使用的工具。
+`anima init` 播下种子。`anima check` 观察种子的生长——哪些区域已发展、哪些仍休眠。智能体可在会话开始时运行 `check`，感知项目所需。
+
+然后 anima 退场。种子通过你与 AI 编程工具的协作而生长——Cursor、Codex、Claude Code，或任何你使用的工具。
 
 ## 核心理念
 
