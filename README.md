@@ -4,6 +4,8 @@
 
 Plant seeds, not templates. Cultivate agents, don't configure them.
 
+> **Status: Rooting.** anima is young and actively growing. The seed format may evolve between versions — `anima check` will detect this and guide your agent through updates.
+
 ## What anima Does
 
 anima plants a **seed** into your project — three files that make your AI coding agent a cultivator, not just an executor:
