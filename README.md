@@ -64,6 +64,7 @@ anima is rooted in [harness engineering](https://openai.com/index/harness-engine
 | [Product Philosophy](docs/PHILOSOPHY.md) | anima's stance: cultivation over control, seeds over templates, the spirit |
 | [Harness Specification](docs/HARNESS-SPEC.md) | The discipline: what to build, with obligation levels |
 | [Harness Guide](docs/HARNESS-GUIDE.md) | The reasoning: how to think about harness design |
+| [Tacit Knowledge Substrate](docs/TACIT-KNOWLEDGE.md) | How anima helps projects turn implicit experience into agent-readable memory |
 
 ## License
 
