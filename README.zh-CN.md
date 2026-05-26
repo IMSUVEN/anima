@@ -60,6 +60,7 @@ anima 扎根于 [harness engineering](https://openai.com/index/harness-engineeri
 | [产品哲学](docs/PHILOSOPHY.zh-CN.md) | anima 的立场：培育优先于控制，种子优先于模板，精灵 |
 | [Harness 规范](docs/HARNESS-SPEC.zh-CN.md) | 学科之维：当建何物，以及义务层级 |
 | [Harness 指南](docs/HARNESS-GUIDE.zh-CN.md) | 推理之维：如何思考 harness 设计 |
+| [潜知识基底](docs/TACIT-KNOWLEDGE.zh-CN.md) | anima 如何帮助项目把隐性经验转化为智能体可读取的记忆 |
 
 ## 许可
 
